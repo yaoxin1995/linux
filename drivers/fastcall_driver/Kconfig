@@ -1,0 +1,7 @@
+config FASTCALL_DRIVER
+	tristate "Driver with example fastcalls"
+	depends on FASTCALL
+	help
+	  Enable the fastcalL driver, which adds some example fastcalls
+	  for testing and benchmarking the fastcall mechanism.
+	  

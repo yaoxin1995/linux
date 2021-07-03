@@ -1,0 +1,1 @@
+obj-$(CONFIG_FASTCALL_DRIVER)			+= fastcall_driver.o
