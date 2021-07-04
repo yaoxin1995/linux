@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
+#include <asm/fastcall.h>
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION(
