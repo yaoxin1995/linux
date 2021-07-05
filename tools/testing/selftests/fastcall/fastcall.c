@@ -10,7 +10,7 @@
 
 struct mesg {
 		size_t size;
-		void *address;
+		unsigned long address;
 };
 /*
  * Read the first byte of the fastcall table.
@@ -31,7 +31,7 @@ TEST(munmap_table)
 
 	ASSERT_NE(MAP_FAILED, address);
 
-	struct mesg msg1 = {.size = PAGE_SIZE, .address=address };
+	struct mesg msg1 = {.size = PAGE_SIZE, .address= (unsigned long)address};
 
 	_read_table(address);
 

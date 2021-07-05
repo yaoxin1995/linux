@@ -20,8 +20,8 @@ static struct class *fce_class;
 static struct device *fce_device;
 
 struct mesg {
-        size_t size;
-        void *address;
+		size_t size;
+		unsigned long address;
 };
 
 /*
@@ -32,7 +32,7 @@ static int fce_open(struct inode *inode, struct file *file)
 {
 	// TODO decide if only device should only be opened writable
 	// if (!(file->f_mode & FMODE_WRITE)) {
-	// 	return -EACCES;
+	// return -EACCES;
 	// }
 
 	return 0;
@@ -41,12 +41,13 @@ static int fce_open(struct inode *inode, struct file *file)
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -EINVAL;
+	struct mesg msg;
 
 	switch (cmd) {
 	case 0:
-		struct mesg *msg;
-		copy_from_user((msg, arg, sizeof(*msg));
-        ret = fastcall_register(msg->address, (unsigned long)msg->size);
+		copy_from_user(&msg, args, sizeof(*msg));
+		pr_info("fce_ioctl: struc mes size: %zu, address: %lu\n", msg->size, msg->address);
+		ret = fastcall_register(msg.address, (unsigned long)msg.size);
 		break;
 	}
 

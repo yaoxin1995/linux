@@ -21,10 +21,12 @@
  * - insert a variable to this page
  * - find the correspondent vma,change it to only readable
  */
-int fastcall_register(unsigned long __user user_addr, unsiunsigned long len)
+int fastcall_register(unsigned long __user user_addr, unsigned long len)
 {
 	struct page *pages[NR_REQ];
 	int Nr_page = len/PAGE_SIZE;
+	int nr_gup;
+	void *address;
 
 	if (Nr_page != NR_REQ) {
 		pr_info("fastcall register func: provided len argument invalid,must be page size");
@@ -34,12 +36,18 @@ int fastcall_register(unsigned long __user user_addr, unsiunsigned long len)
     // pin the page to memory and get page struc
 	mmap_read_lock(current->mm);
 	nr_gup = get_user_pages(user_addr, NR_REQ, FOLL_WRITE, pages, NULL);
+
+	if (nr_gup < 0) {
+		pr_info("fastcall register func: get_user_pages return: %d\n", nr_gup);
+		return nr_gup;
+	}
+
 	mmap_read_unlock(current->mm);
     // map the page to kernel using kmap and get the correspondent kernel vir. addr. of this page
-	void *address = kmap(pages[0]);
+	address = kmap(pages[0]);
     // write a int value at the begining of this page
 	memset(address, 'F', PAGE_SIZE);
-	pr_info("fastcall register func: set "F" to the maped page");
+	pr_info("fastcall register func: set F to the maped page");
     // kunmap from kernel
 	kunmap(pages[0]);
     // find vma of this page
@@ -49,4 +57,6 @@ int fastcall_register(unsigned long __user user_addr, unsiunsigned long len)
 	put_page(pages[0]);
 	pr_info("fastcall register func: fastcall_register func end");
 	return 0;
+
+
 }

@@ -8,7 +8,7 @@
 
 #ifdef CONFIG_FASTCALL
 
-extern int fastcall_register(unsigned long __user, unsiunsigned long);
+extern int fastcall_register(unsigned long __user, unsigned long);
 #endif /* CONFIG_FASTCALL */
 #endif /* __ASSEMBLER__ */
 #endif /* _ASM_X86_FASTCALL_H */
