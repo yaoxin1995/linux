@@ -19,6 +19,11 @@ static struct cdev *fce_cdev;
 static struct class *fce_class;
 static struct device *fce_device;
 
+struct mesg {
+        size_t size;
+        void *address;
+};
+
 /*
  * fce_open() - open the device
  * TODO: remove if it stays empty
@@ -39,7 +44,9 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 
 	switch (cmd) {
 	case 0:
-        ret = 0;
+		struct mesg *msg;
+		copy_from_user((msg, arg, sizeof(*msg));
+        ret = fastcall_register(msg->address, (unsigned long)msg->size);
 		break;
 	}
 

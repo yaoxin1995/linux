@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: GPL-2.0
+#define _GNU_SOURCE
+
+#include <unistd.h>
+#include <stdio.h>
+#include <sys/mman.h>
+#include "../kselftest_harness.h"
+
+#define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
+
+struct mesg {
+		size_t size;
+		void *address;
+};
+/*
+ * Read the first byte of the fastcall table.
+ */
+void _read_table(void *address)
+{
+	printf("First byte of the fastcall table: 0x%x\n", *address);
+}
+
+
+/*
+ * The fastcall table must not be unmapped.
+ * munmap should result in an error.
+ */
+TEST(munmap_table)
+{
+	void *address = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_LOCKED, -1, 0);
+
+	ASSERT_NE(MAP_FAILED, address);
+
+	struct mesg msg1 = {.size = PAGE_SIZE, .address=address };
+
+	_read_table(address);
+
+	fd = open("/dev/etx_device", O_RDWR);
+	if (fd < 0) {
+		printf("Cannot open device file...\n");
+		return 0;
+	}
+	ret = ioctl(fd, 0, &msg1);
+
+	ASSERT_EQ(0, ret);
+	_read_table(address);
+}
+
+TEST_HARNESS_MAIN
