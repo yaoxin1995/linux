@@ -4,6 +4,13 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/mman.h>
+
+#include <sys/fcntl.h> 
+#include <sys/stat.h>
+#include <sys/ioctl.h>      
+#include <unistd.h>     
+#include <stdio.h>
+#include <stdlib.h>
 #include "../kselftest_harness.h"
 
 #define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
@@ -17,7 +24,7 @@ struct mesg {
  */
 void _read_table(void *address)
 {
-	printf("First byte of the fastcall table: 0x%x\n", *address);
+	printf("First byte of the fastcall table: 0x%x\n", *(char *)address);
 }
 
 
@@ -25,8 +32,13 @@ void _read_table(void *address)
  * The fastcall table must not be unmapped.
  * munmap should result in an error.
  */
-TEST(munmap_table)
+TEST(mmap_ioctl)
 {
+	int fd;
+	int ret;
+
+	printf("enter\n");
+
 	void *address = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_LOCKED, -1, 0);
 
 	ASSERT_NE(MAP_FAILED, address);
@@ -35,10 +47,9 @@ TEST(munmap_table)
 
 	_read_table(address);
 
-	fd = open("/dev/etx_device", O_RDWR);
+	fd = open("/dev/fastcall-examples", O_RDONLY);
 	if (fd < 0) {
 		printf("Cannot open device file...\n");
-		return 0;
 	}
 	ret = ioctl(fd, 0, &msg1);
 

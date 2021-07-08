@@ -27,7 +27,9 @@ int fastcall_register(unsigned long __user user_addr, unsigned long len)
 	int Nr_page = len/PAGE_SIZE;
 	int nr_gup;
 	void *address;
+	int ret;
 
+	ret = 0;
 	if (Nr_page != NR_REQ) {
 		pr_info("fastcall register func: provided len argument invalid,must be page size");
 		return -EINVAL;
@@ -39,7 +41,8 @@ int fastcall_register(unsigned long __user user_addr, unsigned long len)
 
 	if (nr_gup < 0) {
 		pr_info("fastcall register func: get_user_pages return: %d\n", nr_gup);
-		return nr_gup;
+		ret = nr_gup;
+		goto fail_get_user_page;
 	}
 
 	mmap_read_unlock(current->mm);
@@ -56,7 +59,10 @@ int fastcall_register(unsigned long __user user_addr, unsigned long len)
 	set_page_dirty_lock(pages[0]);
 	put_page(pages[0]);
 	pr_info("fastcall register func: fastcall_register func end");
-	return 0;
+
+fail_get_user_page:
+		mmap_read_unlock(current->mm);
+	return ret;
 
 
 }

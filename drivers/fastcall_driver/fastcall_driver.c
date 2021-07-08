@@ -14,6 +14,7 @@ MODULE_DESCRIPTION(
 
 #define FCE_DEVICE_NAME "fastcall-examples"
 
+#define FCE_COMMAND_FASTCALL_REGISTRATION 0
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
 static struct class *fce_class;
@@ -44,11 +45,15 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 	struct mesg msg;
 
 	switch (cmd) {
-	case 0:
-		copy_from_user(&msg, args, sizeof(*msg));
-		pr_info("fce_ioctl: struc mes size: %zu, address: %lu\n", msg->size, msg->address);
+	case FCE_COMMAND_FASTCALL_REGISTRATION:
+		pr_info("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_REGISTRATION\n");
+		copy_from_user(&msg, args, sizeof(msg));
+		pr_info("fce_ioctl: struc mes size: %zu, address: %lu\n", msg.size, msg.address);
 		ret = fastcall_register(msg.address, (unsigned long)msg.size);
 		break;
+	default:
+		pr_info("fce_ioctl: the input cmd didn't get any match\n");
+		ret = -1;
 	}
 
 	return ret;
