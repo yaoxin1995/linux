@@ -763,6 +763,16 @@ struct vm_special_mapping {
 	struct page **pages;
 
 	/*
+	 * If non-NULL, then this is called to check if this mapping is allowed to unmap
+	 * Return value: 
+	 * 	- 0 may able to unmap using do_unmap
+	 *	- other value, may not be able to do unmap
+	 */
+	int (*may_unmap)(const struct vm_special_mapping *sm,
+		     struct vm_area_struct *new_vma);
+
+
+	/*
 	 * If non-NULL, then this is called to resolve page faults
 	 * on the special mapping.  If used, .pages is not checked.
 	 */

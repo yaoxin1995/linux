@@ -2832,6 +2832,14 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	/* if it doesn't overlap, we have nothing.. */
 	if (vma->vm_start >= end)
 		return 0;
+	
+	/* check if munmap is allowed for this vma */
+	if (vma->vm_ops && vma->vm_ops->may_unmap) {
+		int error = vma->vm_ops->may_unmap(vma);
+
+		if (error)
+			return error;
+	}
 
 	/*
 	 * If we need to split any vma, do it now to save pain later.
@@ -3420,6 +3428,21 @@ static int special_mapping_mremap(struct vm_area_struct *new_vma,
 	return 0;
 }
 
+/*
+ * Similar to special_mapping_mremap
+ * If user has specified there own may_unmap func, call it to check
+ * if the unmap is allowd
+ */
+static int special_mapping_may_unmap(struct vm_area_struct *vma)
+{
+	struct vm_special_mapping *sm = vma->vm_private_data;
+
+	if (sm->may_unmap)
+		return sm->may_unmap(sm, vma);
+
+	return 0;
+}
+
 static int special_mapping_split(struct vm_area_struct *vma, unsigned long addr)
 {
 	/*
@@ -3431,6 +3454,7 @@ static int special_mapping_split(struct vm_area_struct *vma, unsigned long addr)
 	return -EINVAL;
 }
 
+
 static const struct vm_operations_struct special_mapping_vmops = {
 	.close = special_mapping_close,
 	.fault = special_mapping_fault,
@@ -3438,6 +3462,7 @@ static const struct vm_operations_struct special_mapping_vmops = {
 	.name = special_mapping_name,
 	/* vDSO code relies that VVAR can't be accessed remotely */
 	.access = NULL,
+	.may_unmap = special_mapping_may_unmap,
 	.may_split = special_mapping_split,
 };
 

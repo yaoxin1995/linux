@@ -16,10 +16,42 @@
 #include <asm/fastcall.h>
 
 #define NR_REQ 1
+
+
 /*
- * setup_fastcall_yellow_page
+ * fastcall_mremap - prohibit remap the fastcall yellow,green,puple pages
+ */
+static int fastcall_mremap(const struct vm_special_mapping *sm, struct vm_area_struct *new_vma)
+{
+	return -EINVAL;
+}
+
+/*
+ * fastcall_may_unmap - prohibit unmapping fastcall yellow,green,puple pages
+ */
+static int fastcall_may_unmap(const struct vm_special_mapping *sm,
+			      struct vm_area_struct *vma)
+{
+	return -EACCES;
+}
+
+/*
+ * special mapping struct for yellow page
+ */
+static const struct vm_special_mapping fastcall_yellow_mapping = {
+	.name = "[fastcallyellow]",
+	.mremap = fastcall_mremap,
+	.may_unmap = fastcall_may_unmap,
+};
+
+
+/*
+ * setup_fastcall_yellow_page,purple page and green page
+ * - yellow page and purple page have consecutive addresses
+ * - yellow page is readble and excutable
+ * - puple page is only excutable 
  * - insert a variable to this page
- * - find the correspondent vma,change it to only readable
+ * - TODO : green page address should be randomized
  */
 int fastcall_register(unsigned long __user user_addr, unsigned long len)
 {
