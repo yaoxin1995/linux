@@ -97,8 +97,6 @@ static void unmap_function(unsigned long vma_start)
 }
 
 /*
- * 
- *
  * Memory layout of the fastcall pages:
  *
  * 0xffffffffffffffff +--------------------+
@@ -115,11 +113,7 @@ static void unmap_function(unsigned long vma_start)
  *                    | rest of user space |
  *                0x0 +--------------------+
  *
- */
-
-
-
-/*
+ *
  * install_box_mapping - create and populate a mapping with proper flags for the box text pages
  *	- vma : readable, excutable
  *	- argument:
@@ -143,17 +137,15 @@ static unsigned long install_box_mapping(struct page *pages,
 	vma = _install_special_mapping(mm, start_address, len, flags,
 				       &fastcall_pages_mapping);
 	if (IS_ERR(vma)) {
-		pr_info("install_box_mapping: falied to allocat a vma for box, error code: %lu,
-		 flags: %lu, start address: %lu\n, (unsigned long)vma, flags, start_address");
+		pr_info("install_box_mapping: falied to allocat a vma for box, error code: %lu, flags: %lu, start address: %lu\n", (unsigned long)vma, flags, start_address);
 		goto fail_insert_vma;
 	}
 
 	pfn = page_to_pfn(pages);
-	down_write(&mm->mmap_sem);
+	down_write(&mm->mmap_lock);
 	err = remap_pfn_range(vma, start_address, pfn, len, vma->vm_page_prot);
 	if (err < 0) {
-		pr_info("install_box_mapping: falied to insert pages to vma, error code: %lu,
-		 flags: %lu, start address: %lu, page acount:  %d\n, (unsigned long)vma, flags, start_address, num");
+		pr_info("install_box_mapping: falied to insert pages to vma, error code: %lu, flags: %lu, start address: %lu, page acount:  %d\n", (unsigned long)vma, flags, start_address, num);
 		goto fail_insert_page;
 	}
 
@@ -161,7 +153,7 @@ static unsigned long install_box_mapping(struct page *pages,
 fail_insert_vma:
 	return (unsigned long)vma;
 fail_insert_page:
-	up_write(&mm->mmap_sem);
+	up_write(&mm->mmap_lock);
 	unmap_function(start_address);
 	return err;
 }
@@ -215,7 +207,7 @@ int fastcall_register(unsigned long __user user_addr)
 	yellow_page = alloc_pages(FASTCALL_GPF, 0);
 	if (!yellow_page) {
 		pr_info("fastcall_register: falied to allocate page for yellow box\n");
-		ret = -ENOMEM
+		ret = -ENOMEM;
 		goto fail_allocat_page;
 	}
 	memset(page_address(yellow_page), 'B', PAGE_SIZE);
@@ -229,7 +221,7 @@ int fastcall_register(unsigned long __user user_addr)
 	purple_page = alloc_pages(FASTCALL_GPF, 0);
 	if (!purple_page) {
 		pr_info("fastcall_register: falied to allocate page for purple box\n");
-		ret = -ENOMEM
+		ret = -ENOMEM;
 		goto fail_allocat_page;
 	}
 	memset(page_address(purple_page), 'A', PAGE_SIZE);
@@ -244,7 +236,7 @@ int fastcall_register(unsigned long __user user_addr)
 	green_page = alloc_pages(FASTCALL_GPF, 0);
 	if (!green_page) {
 		pr_info("fastcall_register: falied to allocate page for green box\n");
-		ret = -ENOMEM
+		ret = -ENOMEM;
 		goto fail_allocat_page;
 	}
 	memset(page_address(green_page), 'F', PAGE_SIZE);
@@ -258,9 +250,8 @@ int fastcall_register(unsigned long __user user_addr)
 	message.yellow_address = yellow_start_adr;
 	message.purple_address = purple_start_adr;
 	message.green_address = green_start_adr;
-	if (copy_to_user(user_addr, &message, sizeof(struct mesg))) {
-		pr_info("fastcall_register: falied to copy message struct to user space,user_addr: %lu, yellow_address: %lu,
-		 purple_address: %lu, purple_address: %lu\n", user_addr, message.yellow_address, message.purple_address, message.green_address);
+	if (copy_to_user((void *)user_addr, &message, sizeof(struct mesg))) {
+		pr_info("fastcall_register: falied to copy message struct to user space,user_addr: %lu, yellow_address: %lu, purple_address: %lu, purple_address: %lu\n", user_addr, message.yellow_address, message.purple_address, message.green_address);
 		ret = -EFAULT;
 		goto fail_copy_user;
 	}

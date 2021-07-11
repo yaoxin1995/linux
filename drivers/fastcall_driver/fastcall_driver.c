@@ -2,7 +2,6 @@
 /*
  * fastcall_examples.c - an example device driver which adds some fastcalls for testing and benchmarking
  */
-
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
@@ -13,17 +12,14 @@ MODULE_DESCRIPTION(
 	"An example device driver which adds some fastcalls for testing and benchmarking.");
 
 #define FCE_DEVICE_NAME "fastcall-examples"
-
 #define FCE_COMMAND_FASTCALL_REGISTRATION 0
+
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
 static struct class *fce_class;
 static struct device *fce_device;
 
-struct mesg {
-		size_t size;
-		unsigned long address;
-};
+
 
 /*
  * fce_open() - open the device
@@ -42,7 +38,6 @@ static int fce_open(struct inode *inode, struct file *file)
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -EINVAL;
-	struct mesg msg;
 
 	switch (cmd) {
 	case FCE_COMMAND_FASTCALL_REGISTRATION:
