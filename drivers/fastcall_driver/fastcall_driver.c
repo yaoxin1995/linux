@@ -47,9 +47,8 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 	switch (cmd) {
 	case FCE_COMMAND_FASTCALL_REGISTRATION:
 		pr_info("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_REGISTRATION\n");
-		copy_from_user(&msg, args, sizeof(msg));
-		pr_info("fce_ioctl: struc mes size: %zu, address: %lu\n", msg.size, msg.address);
-		ret = fastcall_register(msg.address, (unsigned long)msg.size);
+		pr_info("fce_ioctl: user address: %lu\n", args);
+		ret = fastcall_register(args);
 		break;
 	default:
 		pr_info("fce_ioctl: the input cmd didn't get any match\n");
