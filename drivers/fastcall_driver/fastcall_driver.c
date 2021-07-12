@@ -44,6 +44,7 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		pr_info("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_REGISTRATION\n");
 		pr_info("fce_ioctl: user address: %lu\n", args);
 		ret = fastcall_register(args);
+		pr_info("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
 		break;
 	default:
 		pr_info("fce_ioctl: the input cmd didn't get any match\n");
@@ -55,7 +56,6 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 
 /*
  * fce_init() - initialize this module
- * 
  * Add one "fastcall-examples" character device.
  */
 static int __init fce_init(void)
@@ -99,8 +99,7 @@ static int __init fce_init(void)
 	}
 
 	// Create a device so it can be linked in /dev/
-	fce_device =
-		device_create(fce_class, NULL, fce_dev, NULL, FCE_DEVICE_NAME);
+	fce_device = device_create(fce_class, NULL, fce_dev, NULL, FCE_DEVICE_NAME);
 	if (IS_ERR_VALUE(fce_device)) {
 		pr_warn("fce: can't create device");
 		result = PTR_ERR(fce_device);

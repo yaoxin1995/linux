@@ -148,11 +148,15 @@ static unsigned long install_box_mapping(struct page *pages,
 		pr_info("install_box_mapping: falied to insert pages to vma, error code: %lu, flags: %lu, start address: %lu, page acount:  %d\n", (unsigned long)vma, flags, start_address, num);
 		goto fail_insert_page;
 	}
-
+	pr_info("install_box_mapping: function end with no bug\n");
+	up_write(&mm->mmap_lock);
 	return start_address;
 fail_insert_vma:
+	pr_info("install_box_mapping: function end with fail_insert_vma\n");
+	up_write(&mm->mmap_lock);
 	return (unsigned long)vma;
 fail_insert_page:
+	pr_info("install_box_mapping: function end with fail_insert_page\n");
 	up_write(&mm->mmap_lock);
 	unmap_function(start_address);
 	return err;
@@ -172,9 +176,9 @@ fail_insert_page:
  * - TODO: get pages for yellow and purple from device
  * - TODO: device should determine the size of green box
  */
-int fastcall_register(unsigned long __user user_addr)
+unsigned long fastcall_register(unsigned long __user user_addr)
 {
-	int ret;
+	unsigned long ret;
 	unsigned long yellow_start_adr;
 	unsigned long purple_start_adr;
 	unsigned long green_start_adr;
@@ -185,6 +189,7 @@ int fastcall_register(unsigned long __user user_addr)
 	struct page *green_page;
 	struct mesg message;
 
+	pr_info("fastcall_register: function starts\n");
 	ret = 0;
 	// find a proper virtual address region for yellow and purple box
 	yellow_start_adr = get_unmapped_area(NULL, current->mm->start_stack, len_yp, 0, 0);
@@ -214,7 +219,7 @@ int fastcall_register(unsigned long __user user_addr)
 
 	ret = install_box_mapping(yellow_page, 1, VM_READ | VM_MAYREAD, yellow_start_adr);
 	if (ret != yellow_start_adr) {
-		pr_info("fastcall_register: falied to install yellow box mapping\n");
+		pr_info("fastcall_register: falied to install yellow box mapping, ret = %lu, yellow_start_adr = %lu\n", ret, yellow_start_adr);
 		goto fail_creat_vma;
 	}
 
@@ -229,7 +234,7 @@ int fastcall_register(unsigned long __user user_addr)
 	//TODO: change it to VM_EXEC | VM_MAYEXEC
 	ret = install_box_mapping(purple_page, 1, VM_READ | VM_MAYREAD, purple_start_adr);
 	if (ret != purple_start_adr) {
-		pr_info("fastcall_register: falied to install purple box mapping\n");
+		pr_info("fastcall_register: falied to install purple box mapping, ret = %lu, purple_start_adr = %lu\n", ret, purple_start_adr);
 		goto fail_creat_vma;
 	}
 
@@ -241,9 +246,9 @@ int fastcall_register(unsigned long __user user_addr)
 	}
 	memset(page_address(green_page), 'F', PAGE_SIZE);
 
-	ret = install_box_mapping(green_page, 1, VM_READ | VM_MAYREAD, green_start_adr);
+	ret = install_box_mapping(green_page, 1, VM_READ | VM_MAYREAD | VM_WRITE | VM_MAYWRITE, green_start_adr);
 	if (ret != green_start_adr) {
-		pr_info("fastcall_register: falied to install green box mapping\n");
+		pr_info("fastcall_register: falied to install green box mapping,  ret = %lu, purple_start_adr = %lu\n", ret, green_start_adr);
 		goto fail_creat_vma;
 	}
 
@@ -255,15 +260,20 @@ int fastcall_register(unsigned long __user user_addr)
 		ret = -EFAULT;
 		goto fail_copy_user;
 	}
+	pr_info("fastcall_register: function end with no bug\n");
 	return ret;
 
 fail_get_free_vma_area:
+	pr_info("fastcall_register: function end with fail_get_free_vma_area\n");
 	return ret;
 fail_allocat_page:
+	pr_info("fastcall_register: function end with fail_allocat_page\n");
 	return ret;
 fail_creat_vma:
+	pr_info("fastcall_register: function end with fail_creat_vma \n");
 	return ret;
 fail_copy_user:
+	pr_info("fastcall_register: function end with fail_copy_user\n");
 	return ret;
 
 }
