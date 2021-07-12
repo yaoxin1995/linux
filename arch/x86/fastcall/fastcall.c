@@ -15,6 +15,9 @@
 #include <linux/mutex.h>
 #include <asm/fastcall.h>
 
+
+#include <asm/elf.h>
+
 #define NR_REQ 1
 #define FASTCALL_GPF GFP_HIGHUSER
 
@@ -137,31 +140,46 @@ static unsigned long install_box_mapping(struct page *pages,
 	vma = _install_special_mapping(mm, start_address, len, flags,
 				       &fastcall_pages_mapping);
 	if (IS_ERR(vma)) {
-		pr_info("install_box_mapping: falied to allocat a vma for box, error code: %lu, flags: %lu, start address: %lu\n", (unsigned long)vma, flags, start_address);
+		pr_info("install_box_mapping: falied to allocat a vma for box, error code: %ld, flags: %lu, start address: %lu\n", PTR_ERR(vma), flags, start_address);
 		goto fail_insert_vma;
 	}
 
 	pfn = page_to_pfn(pages);
-	down_write(&mm->mmap_lock);
 	err = remap_pfn_range(vma, start_address, pfn, len, vma->vm_page_prot);
 	if (err < 0) {
 		pr_info("install_box_mapping: falied to insert pages to vma, error code: %lu, flags: %lu, start address: %lu, page acount:  %d\n", (unsigned long)vma, flags, start_address, num);
 		goto fail_insert_page;
 	}
 	pr_info("install_box_mapping: function end with no bug\n");
-	up_write(&mm->mmap_lock);
+
 	return start_address;
 fail_insert_vma:
 	pr_info("install_box_mapping: function end with fail_insert_vma\n");
-	up_write(&mm->mmap_lock);
 	return (unsigned long)vma;
 fail_insert_page:
 	pr_info("install_box_mapping: function end with fail_insert_page\n");
-	up_write(&mm->mmap_lock);
 	unmap_function(start_address);
 	return err;
 }
 
+unsigned long get_unmapp_area(unsigned long len)
+{
+	struct mm_struct *mm = current->mm;
+	struct vm_unmapped_area_info info;
+	unsigned long begin, end;
+
+	begin = get_mmap_base(1);
+	end = DEFAULT_MAP_WINDOW;
+	info.flags = 0;
+	info.length = len;
+	info.low_limit = begin;
+	info.high_limit = end;
+	info.align_mask = 0;
+	info.align_offset = 0;
+
+	return vm_unmapped_area(&info);
+
+}
 /*
  * fastcall_register: install yellow- purple- green- box
  * - yellow page and purple page have consecutive addresses
@@ -183,16 +201,22 @@ unsigned long fastcall_register(unsigned long __user user_addr)
 	unsigned long purple_start_adr;
 	unsigned long green_start_adr;
 	// total length for yellow and purple box
-	unsigned long len_yp = 2 * PAGE_SIZE;
+	unsigned long len_ypg = 3 * PAGE_SIZE;
 	struct page *yellow_page;
 	struct page *purple_page;
 	struct page *green_page;
 	struct mesg message;
+	struct mm_struct *mm = current->mm;
 
 	pr_info("fastcall_register: function starts\n");
 	ret = 0;
+
+	if (mmap_write_lock_killable(mm))
+		return -EINTR;
+
 	// find a proper virtual address region for yellow and purple box
-	yellow_start_adr = get_unmapped_area(NULL, current->mm->start_stack, len_yp, 0, 0);
+	//yellow_start_adr = get_unmapped_area(NULL, current->mm->start_stack, len_yp, 0, 0);
+	yellow_start_adr = get_unmapp_area(len_ypg);
 	if (IS_ERR_VALUE(yellow_start_adr)) {
 		pr_info("fastcall_register: falied to find a unmapped area for yellow box, yellow_start_adr: %lu\n", yellow_start_adr);
 		ret = yellow_start_adr;
@@ -200,9 +224,13 @@ unsigned long fastcall_register(unsigned long __user user_addr)
 	}
 
 	purple_start_adr = yellow_start_adr + PAGE_SIZE;
+	green_start_adr = purple_start_adr + PAGE_SIZE;
+	pr_info("fastcall_register: yellow_adr: %lu, purple_adr: %lu, green_adr: %lu\n", yellow_start_adr, purple_start_adr, green_start_adr);
+
 
 	// TODO: the start address of green box should be randomized somehow
-	green_start_adr = get_unmapped_area(NULL, current->mm->start_stack, PAGE_SIZE, 0, 0);
+	//green_start_adr = get_unmapped_area(NULL, current->mm->start_stack, PAGE_SIZE, 0, 0);
+
 	if (IS_ERR_VALUE(green_start_adr)) {
 		pr_info("fastcall_register: falied to find a unmapped area for green box, yellow_start_adr: %lu, green_start_adr: %lu\n", yellow_start_adr, green_start_adr);
 		ret = green_start_adr;
@@ -246,7 +274,7 @@ unsigned long fastcall_register(unsigned long __user user_addr)
 	}
 	memset(page_address(green_page), 'F', PAGE_SIZE);
 
-	ret = install_box_mapping(green_page, 1, VM_READ | VM_MAYREAD | VM_WRITE | VM_MAYWRITE, green_start_adr);
+	ret = install_box_mapping(green_page, 1, VM_READ | VM_MAYREAD | VM_MAYWRITE | VM_WRITE | VM_LOCKED | VM_IO, green_start_adr);
 	if (ret != green_start_adr) {
 		pr_info("fastcall_register: falied to install green box mapping,  ret = %lu, purple_start_adr = %lu\n", ret, green_start_adr);
 		goto fail_creat_vma;
@@ -261,18 +289,23 @@ unsigned long fastcall_register(unsigned long __user user_addr)
 		goto fail_copy_user;
 	}
 	pr_info("fastcall_register: function end with no bug\n");
+	mmap_write_unlock(mm);
 	return ret;
 
 fail_get_free_vma_area:
+	mmap_write_unlock(mm);
 	pr_info("fastcall_register: function end with fail_get_free_vma_area\n");
 	return ret;
 fail_allocat_page:
+	mmap_write_unlock(mm);
 	pr_info("fastcall_register: function end with fail_allocat_page\n");
 	return ret;
 fail_creat_vma:
+	mmap_write_unlock(mm);
 	pr_info("fastcall_register: function end with fail_creat_vma \n");
 	return ret;
 fail_copy_user:
+	mmap_write_unlock(mm);
 	pr_info("fastcall_register: function end with fail_copy_user\n");
 	return ret;
 
