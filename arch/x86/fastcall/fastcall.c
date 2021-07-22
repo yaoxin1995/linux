@@ -177,7 +177,7 @@ unsigned long get_randomized_address(unsigned long len)
 	info.align_mask = 0;
 	info.align_offset = 0;
 
-	info.low_limit += PAGE_ALIGN((get_random_long() & ((1UL << (__VIRTUAL_MASK_SHIFT - 3)) - 1)));
+	info.low_limit = PAGE_ALIGN((get_random_long() & ((1UL << (__VIRTUAL_MASK_SHIFT - 3)) - 1)));
 
 	return vm_unmapped_area(&info);
 
@@ -227,7 +227,6 @@ unsigned long fastcall_register(unsigned long __user user_addr, struct page **ye
 
 	purple_start_adr = yellow_start_adr + PAGE_SIZE * yellow_pages_num;
 	pr_info("fastcall_register: yellow_adr: %lu, purple_adr: %lu\n", yellow_start_adr, purple_start_adr);
-
 
 	ret = fastcall_mapping(yellow_pages, yellow_pages_num, VM_READ | VM_MAYREAD, yellow_start_adr);
 	if (ret != yellow_start_adr) {
