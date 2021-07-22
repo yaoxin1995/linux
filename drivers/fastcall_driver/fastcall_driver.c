@@ -6,6 +6,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <asm/fastcall.h>
+#include <asm/pgtable.h>
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION(
@@ -38,12 +39,15 @@ static int fce_open(struct inode *inode, struct file *file)
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -EINVAL;
+	struct page *yellow_pages[] = { ZERO_PAGE(0) };
+	struct page *purple_pages[] = { ZERO_PAGE(0) };
 
 	switch (cmd) {
 	case FCE_COMMAND_FASTCALL_REGISTRATION:
 		pr_info("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_REGISTRATION\n");
 		pr_info("fce_ioctl: user address: %lu\n", args);
-		ret = fastcall_register(args);
+
+		ret = fastcall_register(args, yellow_pages, 1, purple_pages, 1);
 		pr_info("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
 		break;
 	default:

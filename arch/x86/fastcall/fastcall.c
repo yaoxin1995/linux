@@ -14,11 +14,14 @@
 #include <linux/highmem.h>
 #include <linux/mutex.h>
 #include <asm/fastcall.h>
-
+#include <linux/random.h>
 
 #include <asm/elf.h>
 
-#define NR_REQ 1
+#include <asm/page_types.h>
+#include <asm/page_64_types.h>
+
+
 #define FASTCALL_GPF GFP_HIGHUSER
 
 struct mesg {
@@ -127,25 +130,22 @@ static void unmap_function(unsigned long vma_start)
  *		- start_address: start address of this vma
  *	- Return the pointer to the first address of the area.
  */
-static unsigned long install_box_mapping(struct page *pages,
-					      unsigned long num, unsigned long flags, unsigned long start_address)
+static unsigned long fastcall_mapping(struct page **pages, unsigned long num, unsigned long flags, unsigned long start_address)
 {
 	int err;
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	unsigned long len = num * PAGE_SIZE;
-	unsigned long pfn;
 
 	pr_info("install_box_mapping: function starts");
-	vma = _install_special_mapping(mm, start_address, len, flags,
-				       &fastcall_pages_mapping);
+	vma = _install_special_mapping(mm, start_address, len, flags, &fastcall_pages_mapping);
 	if (IS_ERR(vma)) {
 		pr_info("install_box_mapping: falied to allocat a vma for box, error code: %ld, flags: %lu, start address: %lu\n", PTR_ERR(vma), flags, start_address);
 		goto fail_insert_vma;
 	}
 
-	pfn = page_to_pfn(pages);
-	err = remap_pfn_range(vma, start_address, pfn, len, vma->vm_page_prot);
+	err = vm_insert_pages(vma, start_address, pages, &num);
+
 	if (err < 0) {
 		pr_info("install_box_mapping: falied to insert pages to vma, error code: %lu, flags: %lu, start address: %lu, page acount:  %d\n", (unsigned long)vma, flags, start_address, num);
 		goto fail_insert_page;
@@ -162,20 +162,22 @@ fail_insert_page:
 	return err;
 }
 
-unsigned long get_unmapp_area(unsigned long len)
-{
-	struct mm_struct *mm = current->mm;
-	struct vm_unmapped_area_info info;
-	unsigned long begin, end;
+/*
+ * get_randomized_address: get random start address of a vma
+ *	- len: the size of the vma
+ */
 
-	begin = get_mmap_base(1);
-	end = DEFAULT_MAP_WINDOW;
+unsigned long get_randomized_address(unsigned long len)
+{
+	struct vm_unmapped_area_info info;
+
 	info.flags = 0;
 	info.length = len;
-	info.low_limit = begin;
-	info.high_limit = end;
+	info.high_limit = DEFAULT_MAP_WINDOW;
 	info.align_mask = 0;
 	info.align_offset = 0;
+
+	info.low_limit += PAGE_ALIGN((get_random_long() & ((1UL << (__VIRTUAL_MASK_SHIFT - 3)) - 1)));
 
 	return vm_unmapped_area(&info);
 
@@ -189,22 +191,21 @@ unsigned long get_unmapp_area(unsigned long len)
  * - insert a variable to this page
  * - Argument:
  *		- user_addr: copy the adresses of 3 boxes to this address
- * - TODO : green page address should be randomized
+ *		- yellow_pages: pages for yellow box(excutable readabel box)
+ *		- yellow_pages_num: number of pages in  array yellow_pages
+ *		- purple_pages: pages for purple box(excutable box)
+ *		- purple_pages_num: number of pages in  array purple_pages
  * - TODO: puple page should be only excutable
- * - TODO: get pages for yellow and purple from device
  * - TODO: device should determine the size of green box
  */
-unsigned long fastcall_register(unsigned long __user user_addr)
+unsigned long fastcall_register(unsigned long __user user_addr, struct page **yellow_pages, int yellow_pages_num, struct page **purple_pages, int purple_pages_num)
 {
 	unsigned long ret;
 	unsigned long yellow_start_adr;
 	unsigned long purple_start_adr;
 	unsigned long green_start_adr;
-	// total length for yellow and purple box
-	unsigned long len_ypg = 3 * PAGE_SIZE;
-	struct page *yellow_page;
-	struct page *purple_page;
 	struct page *green_page;
+	struct page *green_pages[1];
 	struct mesg message;
 	struct mm_struct *mm = current->mm;
 
@@ -214,53 +215,28 @@ unsigned long fastcall_register(unsigned long __user user_addr)
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
 
+
+
 	// find a proper virtual address region for yellow and purple box
-	//yellow_start_adr = get_unmapped_area(NULL, current->mm->start_stack, len_yp, 0, 0);
-	yellow_start_adr = get_unmapp_area(len_ypg);
+	yellow_start_adr = get_unmapped_area(NULL, 0, (yellow_pages_num + purple_pages_num) * PAGE_SIZE, 0, 0);
 	if (IS_ERR_VALUE(yellow_start_adr)) {
 		pr_info("fastcall_register: falied to find a unmapped area for yellow box, yellow_start_adr: %lu\n", yellow_start_adr);
 		ret = yellow_start_adr;
 		goto fail_get_free_vma_area;
 	}
 
-	purple_start_adr = yellow_start_adr + PAGE_SIZE;
-	green_start_adr = purple_start_adr + PAGE_SIZE;
-	pr_info("fastcall_register: yellow_adr: %lu, purple_adr: %lu, green_adr: %lu\n", yellow_start_adr, purple_start_adr, green_start_adr);
+	purple_start_adr = yellow_start_adr + PAGE_SIZE * yellow_pages_num;
+	pr_info("fastcall_register: yellow_adr: %lu, purple_adr: %lu\n", yellow_start_adr, purple_start_adr);
 
 
-	// TODO: the start address of green box should be randomized somehow
-	//green_start_adr = get_unmapped_area(NULL, current->mm->start_stack, PAGE_SIZE, 0, 0);
-
-	if (IS_ERR_VALUE(green_start_adr)) {
-		pr_info("fastcall_register: falied to find a unmapped area for green box, yellow_start_adr: %lu, green_start_adr: %lu\n", yellow_start_adr, green_start_adr);
-		ret = green_start_adr;
-		goto fail_get_free_vma_area;
-	}
-
-	yellow_page = alloc_pages(FASTCALL_GPF, 0);
-	if (!yellow_page) {
-		pr_info("fastcall_register: falied to allocate page for yellow box\n");
-		ret = -ENOMEM;
-		goto fail_allocat_page;
-	}
-	memset(page_address(yellow_page), 'B', PAGE_SIZE);
-
-	ret = install_box_mapping(yellow_page, 1, VM_READ | VM_MAYREAD, yellow_start_adr);
+	ret = fastcall_mapping(yellow_pages, yellow_pages_num, VM_READ | VM_MAYREAD, yellow_start_adr);
 	if (ret != yellow_start_adr) {
 		pr_info("fastcall_register: falied to install yellow box mapping, ret = %lu, yellow_start_adr = %lu\n", ret, yellow_start_adr);
 		goto fail_creat_vma;
 	}
 
-	purple_page = alloc_pages(FASTCALL_GPF, 0);
-	if (!purple_page) {
-		pr_info("fastcall_register: falied to allocate page for purple box\n");
-		ret = -ENOMEM;
-		goto fail_allocat_page;
-	}
-	memset(page_address(purple_page), 'A', PAGE_SIZE);
-
 	//TODO: change it to VM_EXEC | VM_MAYEXEC
-	ret = install_box_mapping(purple_page, 1, VM_READ | VM_MAYREAD, purple_start_adr);
+	ret = fastcall_mapping(purple_pages, purple_pages_num, VM_READ | VM_MAYREAD, purple_start_adr);
 	if (ret != purple_start_adr) {
 		pr_info("fastcall_register: falied to install purple box mapping, ret = %lu, purple_start_adr = %lu\n", ret, purple_start_adr);
 		goto fail_creat_vma;
@@ -274,7 +250,18 @@ unsigned long fastcall_register(unsigned long __user user_addr)
 	}
 	memset(page_address(green_page), 'F', PAGE_SIZE);
 
-	ret = install_box_mapping(green_page, 1, VM_READ | VM_MAYREAD | VM_MAYWRITE | VM_WRITE | VM_LOCKED | VM_IO, green_start_adr);
+
+	//green_start_adr = get_unmapped_area(NULL, current->mm->start_stack, PAGE_SIZE, 0, 0);
+	green_start_adr = get_randomized_address(PAGE_SIZE);
+	pr_info("fastcall_register: green_start_adr: %lu\n", green_start_adr);
+	if (IS_ERR_VALUE(green_start_adr)) {
+		pr_info("fastcall_register: falied to find a unmapped area for green box, yellow_start_adr: %lu, green_start_adr: %lu\n", yellow_start_adr, green_start_adr);
+		ret = green_start_adr;
+		goto fail_get_free_vma_area;
+	}
+
+	green_pages[0] = green_page;
+	ret = fastcall_mapping(green_pages, 1, VM_READ | VM_MAYREAD | VM_MAYWRITE | VM_WRITE | VM_LOCKED | VM_IO, green_start_adr);
 	if (ret != green_start_adr) {
 		pr_info("fastcall_register: falied to install green box mapping,  ret = %lu, purple_start_adr = %lu\n", ret, green_start_adr);
 		goto fail_creat_vma;
@@ -290,6 +277,7 @@ unsigned long fastcall_register(unsigned long __user user_addr)
 	}
 	pr_info("fastcall_register: function end with no bug\n");
 	mmap_write_unlock(mm);
+	ret = 0;
 	return ret;
 
 fail_get_free_vma_area:
@@ -308,5 +296,4 @@ fail_copy_user:
 	mmap_write_unlock(mm);
 	pr_info("fastcall_register: function end with fail_copy_user\n");
 	return ret;
-
 }
