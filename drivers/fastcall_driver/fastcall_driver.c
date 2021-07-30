@@ -5,12 +5,19 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
-#include <asm/fastcall.h>
 #include <asm/pgtable.h>
-
+#include <linux/mm_types.h>
+#include <linux/mmap_lock.h>
+#include <linux/mm.h>
+#include <linux/init.h>
+#include <linux/highmem.h>
+#include <linux/mutex.h>
+#include <asm/fastcall.h>
+#include <linux/random.h>
+#include <linux/slab.h>
+#include <asm/elf.h>
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION(
-	"An example device driver which adds some fastcalls for testing and benchmarking.");
+MODULE_DESCRIPTION("An example device driver which adds some fastcalls for testing and benchmarking.");
 
 #define FCE_DEVICE_NAME "fastcall-examples"
 #define FCE_COMMAND_FASTCALL_REGISTRATION 0
@@ -20,6 +27,104 @@ static struct cdev *fce_cdev;
 static struct class *fce_class;
 static struct device *fce_device;
 
+struct mesg {
+		unsigned long fce_reg_addr;
+		unsigned long secret_reg_addr;
+		unsigned long hidden_reg_addr;
+};
+
+
+int fast_call_example(unsigned long __user user_address){
+
+	struct page *fce_pages[2];
+	struct page *hidden_pages[1];
+	struct page *secret_pages[1];
+	struct mm_struct *mm = current->mm;
+	unsigned long fce_addr;
+	unsigned long hidden_addr;
+	unsigned long secret_addr;
+	struct fastcall_entry *entry;
+	struct mesg message;
+	int ret = 0;
+
+	if (mmap_write_lock_killable(mm))
+		return -EINTR;
+
+
+	fce_pages[0] = alloc_pages(FASTCALL_GPF, 0);
+	fce_pages[1] = alloc_pages(FASTCALL_GPF, 0);
+	hidden_pages[0] = alloc_pages(FASTCALL_GPF, 0);
+	secret_pages[0] = alloc_pages(FASTCALL_GPF, 0);
+
+	memset(page_address(fce_pages[0]), 'A', PAGE_SIZE);
+	memset(page_address(fce_pages[1]), 'B', PAGE_SIZE);
+	memset(page_address(hidden_pages[0]), 'C', PAGE_SIZE);
+	memset(page_address(secret_pages[0]), 'D', PAGE_SIZE);
+
+
+	fce_addr = fce_regions_creation(fce_pages, 2, secret_pages, 1, 0);
+	if (IS_ERR((int)fce_addr) || fce_addr < 0 || IS_ERR_VALUE(fce_addr)) {
+		pr_info("fast_call_example: falied to call fce_regions_creation, fce_addr = %lx\n", fce_addr);
+		ret = -ENOMEM;
+		goto fail_fce_creation;
+	}
+
+	hidden_addr = get_randomized_address(PAGE_SIZE);
+	pr_info("fast_call_example: hidden_addr: %lx\n", hidden_addr);
+	if (IS_ERR_VALUE(hidden_addr)) {
+		pr_info("fast_call_example: falied to find a unmapped area for hidden box, fce_addr: %lx, hidden_addr: %lx\n", fce_addr, hidden_addr);
+		ret = -ENOMEM;
+		goto fail_get_free_vma_area;
+	}
+
+	ret = hidden_region_creatrion(fce_addr, hidden_pages, 1, hidden_addr);
+	if (ret != 0) {
+		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
+		ret = -ENOMEM;
+		goto fail_creation_hidden_region;
+	}
+
+	entry = &fc_table->entries[fc_table->entries_size];
+	if(!entry){
+		pr_info("fast_call_example: can't get the entry for the system call\n");
+		ret = -EINTR;
+		goto fail_get_entry;
+	}
+
+	pr_info("fast_call_example: regions address of fastcall, fce_region:%lx, secrect_region:%lx, hidden_region:%lx\n", entry->fce_region_addr, entry->exect_region_addr,  entry->hidden_region_addr);
+
+	if(entry->fce_region_addr != fce_addr){
+		pr_info("fast_call_example: fce_address diffrent ,fce_addr in driver: %lx, fce_addr in table: %lx \n", fce_addr, entry->fce_region_addr);
+		ret = -EINTR;
+		goto fail_addr_same;
+	}
+
+	if(entry->hidden_region_addr != hidden_addr){
+		pr_info("fast_call_example: hidden_addr diffrent ,hidden_addr in driver: %lx, hidden_addr in table: %lx \n", hidden_addr, entry->hidden_region_addr);
+		ret = -EINTR;
+		goto fail_addr_same;
+	}
+
+	message.fce_reg_addr = fce_addr;
+	message.hidden_reg_addr = hidden_addr;
+	message.secret_reg_addr = entry->exect_region_addr;
+
+	if (copy_to_user((void *)user_address, &message, sizeof(struct mesg))) {
+		pr_info("fast_call_example: falied to copy message struct to user space,user_addr: %lx, fce_reg_addr: %lx, hidden_reg_addr: %lx, secret_reg_addr: %lx\n", user_address, message.fce_reg_addr, message.hidden_reg_addr, message.secret_reg_addr);
+		ret = -EFAULT;
+		goto fail_copy_user;
+	}
+
+fail_fce_creation:
+fail_get_free_vma_area:
+fail_creation_hidden_region:
+fail_get_entry:
+fail_addr_same:
+fail_copy_user:
+	mmap_write_unlock(mm);
+	return ret;
+
+}
 
 
 /*
@@ -39,15 +144,13 @@ static int fce_open(struct inode *inode, struct file *file)
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -EINVAL;
-	struct page *yellow_pages[] = { ZERO_PAGE(0) };
-	struct page *purple_pages[] = { ZERO_PAGE(0) };
 
 	switch (cmd) {
 	case FCE_COMMAND_FASTCALL_REGISTRATION:
 		pr_info("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_REGISTRATION\n");
 		pr_info("fce_ioctl: user address: %lu\n", args);
 
-		ret = fastcall_register(args, yellow_pages, 1, purple_pages, 1);
+		ret = fast_call_example(args);
 		pr_info("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
 		break;
 	default:
