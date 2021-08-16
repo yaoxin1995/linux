@@ -289,11 +289,11 @@ int hidden_region_creatrion(unsigned long fce_address, struct page **pages, int 
 
 
 
-	pr_info("region addresses in fc_table, fc_address:%lx \n", (fc_table->entries[fce_entries_size]).fce_region_addr);
-	pr_info("region addresses in fc_table, secret_adr:%lx \n", (fc_table->entries[fce_entries_size]).exect_region_addr);
-	pr_info("region addresses in fc_table, hidden_addr: %lx\n", (fc_table->entries[fce_entries_size]).hidden_region_addr);
-	pr_info("region addresses in fc_table, registered fastcall: %d\n", fc_table->entries_size);
-	pr_info("hidden_region_creatrion:  function end\n");
+	pr_info("hidden_region_creatrion:region addresses in fc_table, fc_address:%lx \n", (fc_table->entries[fce_entries_size]).fce_region_addr);
+	pr_info("hidden_region_creatrion:region addresses in fc_table, secret_adr:%lx \n", (fc_table->entries[fce_entries_size]).exect_region_addr);
+	pr_info("hidden_region_creatrion:region addresses in fc_table, hidden_addr: %lx\n", (fc_table->entries[fce_entries_size]).hidden_region_addr);
+	pr_info("hidden_region_creatrion:region addresses in fc_table, registered fastcall: %d\n", fc_table->entries_size);
+	pr_info("hidden_region_creatrion:  function end with no bug\n");
 fail_fac_address_invailid:
 fail_creat_vma:
 	// mmap_write_unlock(mm);
@@ -346,7 +346,8 @@ int initianlize_table(void)
  * - return the fastcall entry address if succeed
  * - TODO: puple page should be only excutable
  */
-unsigned long fce_regions_creation( struct page **fce_pages, int fce_pages_num, struct page **secret_pages, int secret_pages_num, unsigned long offset)
+unsigned long fce_regions_creation( struct page **fce_pages, int fce_pages_num, struct page **secret_pages, \
+int secret_pages_num, unsigned long offset)
 {
 	unsigned long ret;
 	unsigned long fce_start_adr;
@@ -361,15 +362,11 @@ unsigned long fce_regions_creation( struct page **fce_pages, int fce_pages_num, 
 		initianlize_table();
 	}
 
+	//BUG_ON(fc_table->entries_size >= NR_ENTRIES);
 	if(fc_table->entries_size >= NR_ENTRIES) {
 		pr_info("fce_regions_creation: can't have more fastcall \n");
 		goto fail_creat_fce;
 	}
-
-	// if (mmap_write_lock_killable(mm))
-	// 	return -EINTR;
-
-
 
 	// find a proper virtual address region for yellow and purple box
 	fce_start_adr = get_unmapped_area(NULL, 0, (fce_pages_num + secret_pages_num) * PAGE_SIZE, 0, 0);
@@ -380,7 +377,8 @@ unsigned long fce_regions_creation( struct page **fce_pages, int fce_pages_num, 
 	}
 
 	secret_start_adr = fce_start_adr + PAGE_SIZE * fce_pages_num;
-	pr_info("fce_regions_creation: fce_start_adr: %lx, secret_start_adr: %lx\n", fce_start_adr, secret_start_adr);
+	pr_info("fce_regions_creation: fce_start_adr: %lx, secret_start_adr: %lx fce_function_offset:%lx \n",\
+	 fce_start_adr, secret_start_adr, offset);
 
 	ret = region_mapping(fce_pages, fce_pages_num, FCE_REGION_FLAG, fce_start_adr);
 	if (ret != fce_start_adr) {
@@ -394,7 +392,7 @@ unsigned long fce_regions_creation( struct page **fce_pages, int fce_pages_num, 
 
 
 	//TODO: change it to VM_EXEC | VM_MAYEXEC
-	ret = region_mapping(secret_pages, secret_pages_num, VM_READ | VM_MAYREAD, secret_start_adr);
+	ret = region_mapping(secret_pages, secret_pages_num, FCE_REGION_FLAG, secret_start_adr);
 	if (ret != secret_start_adr) {
 		pr_info("fce_regions_creation: falied to install exec_only_pages mapping, ret = %lx, secret_start_adr = %lx\n", ret, secret_start_adr);
 		goto fail_creat_vma;
@@ -406,7 +404,8 @@ unsigned long fce_regions_creation( struct page **fce_pages, int fce_pages_num, 
 
 	entry->fce_region_addr = fce_start_adr;
 	entry->exect_region_addr = secret_start_adr;
-	pr_info("fce_regions_creation: entry->fce_region_addr: = %lx, entry->exect_region_addr  = %lx\n", entry->fce_region_addr, entry->exect_region_addr);
+	pr_info("fce_regions_creation: entry->fce_region_addr: = %lx, entry->exect_region_addr  = %lx\n", \
+	entry->fce_region_addr, entry->exect_region_addr);
 
 
 	pr_info("fce_regions_creation: function end with no bug\n");

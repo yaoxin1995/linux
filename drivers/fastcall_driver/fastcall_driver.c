@@ -16,16 +16,53 @@
 #include <linux/random.h>
 #include <linux/slab.h>
 #include <asm/elf.h>
+#include <linux/minmax.h>
+
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("An example device driver which adds some fastcalls for testing and benchmarking.");
 
 #define FCE_DEVICE_NAME "fastcall-examples"
 #define FCE_COMMAND_FASTCALL_REGISTRATION 0
 
+
+/*
+ * Function labels from fastcall_functions.S.
+ */
+const void fce_region_start(void);
+const void fce_function(void);
+const void fce_region_end(void);
+
+const void secret_region_start(void);
+const void sr_function(void);
+const void secret_region_end(void);
+
+
+/*
+ * FCE_FUNCTION_SIZE - size of the fastcall function text segment in bytes
+ */
+#define FCE_FUNCTIONS_SIZE                                                     \
+	((unsigned long)(fce_region_end - fce_region_start))
+#define NR_FCE_PAGES ((FCE_FUNCTIONS_SIZE - 1) / PAGE_SIZE + 1)
+
+
+/*
+ * SR_FUNCTIONS_SIZE - size of the secret function text segment in bytes
+ */
+#define SR_FUNCTIONS_SIZE                                                     \
+	((unsigned long)(secret_region_end - secret_region_start))
+#define NR_SR_PAGES ((SR_FUNCTIONS_SIZE - 1) / PAGE_SIZE + 1)
+
+
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
 static struct class *fce_class;
 static struct device *fce_device;
+static struct page *fce_pages[1];
+static struct page *sr_pages[1];
+
+
+
+
 
 struct mesg {
 		unsigned long fce_reg_addr;
@@ -34,11 +71,14 @@ struct mesg {
 };
 
 
-int fast_call_example(unsigned long __user user_address){
+static unsigned long function_offset(const void (*fn)(void))
+{
+	return (fn - fce_region_start);
+}
 
-	struct page *fce_pages[2];
+
+int fast_call_example(unsigned long __user user_address){
 	struct page *hidden_pages[1];
-	struct page *secret_pages[1];
 	struct mm_struct *mm = current->mm;
 	unsigned long fce_addr;
 	unsigned long hidden_addr;
@@ -47,23 +87,28 @@ int fast_call_example(unsigned long __user user_address){
 	int index;
 	struct mesg message;
 	int ret = 0;
+	unsigned long test_value = 17132393680896;
+	char *kernel_sr_addr = (char*)kmap(sr_pages[0]);
+	unsigned long *test_pointer;
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
+	test_pointer = (unsigned long *)(kernel_sr_addr+2);
+
+	pr_info("fast_call_example: test_pointer address: %p, kernel_sr_addr: %p\n", (void *) test_pointer, (void *)kernel_sr_addr);
+	*test_pointer = test_value;
+	pr_info("fast_call_example: value of test_pointer : 0x%lx\n", *test_pointer);
+	kunmap(sr_pages[0]);
 
 
-	fce_pages[0] = alloc_pages(FASTCALL_GPF, 0);
-	fce_pages[1] = alloc_pages(FASTCALL_GPF, 0);
+
 	hidden_pages[0] = alloc_pages(FASTCALL_GPF, 0);
-	secret_pages[0] = alloc_pages(FASTCALL_GPF, 0);
 
-	memset(page_address(fce_pages[0]), 'A', PAGE_SIZE);
-	memset(page_address(fce_pages[1]), 'B', PAGE_SIZE);
-	memset(page_address(hidden_pages[0]), 'C', PAGE_SIZE);
-	memset(page_address(secret_pages[0]), 'D', PAGE_SIZE);
+	memset(page_address(hidden_pages[0]), 'D', PAGE_SIZE);
 
 
-	fce_addr = fce_regions_creation(fce_pages, 2, secret_pages, 1, 0);
+	pr_info("fast_call_example: fastcall function offset: %lx\n", function_offset(fce_function));
+	fce_addr = fce_regions_creation(fce_pages, 1, sr_pages, 1, function_offset(fce_function));
 	if (IS_ERR((int)fce_addr) || fce_addr < 0 || IS_ERR_VALUE(fce_addr)) {
 		pr_info("fast_call_example: falied to call fce_regions_creation, fce_addr = %lx\n", fce_addr);
 		ret = -ENOMEM;
@@ -77,6 +122,8 @@ int fast_call_example(unsigned long __user user_address){
 		ret = -ENOMEM;
 		goto fail_get_free_vma_area;
 	}
+
+
 
 	ret = hidden_region_creatrion(fce_addr, hidden_pages, 1, hidden_addr);
 	if (ret != 0) {
@@ -102,6 +149,8 @@ int fast_call_example(unsigned long __user user_address){
 		ret = -EINTR;
 		goto fail_addr_same;
 	}
+
+	
 
 	if(entry->hidden_region_addr != hidden_addr){
 		pr_info("fast_call_example: hidden_addr diffrent ,hidden_addr in driver: %lx, hidden_addr in table: %lx \n", hidden_addr, entry->hidden_region_addr);
@@ -171,11 +220,47 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
  */
 static int __init fce_init(void)
 {
-	int result;
+
+	int result, fce_page_id, sr_page_id;
+	size_t fce_count, sr_count;
+	void *fce_addr, *sr_addr;
+
 	// TODO implement close to unregister fastcalls
 	static struct file_operations fops = { .owner = THIS_MODULE,
 					       .open = fce_open,
 					       .unlocked_ioctl = fce_ioctl };
+
+
+	// Allocate pages for example function and copy them
+	BUG_ON(NR_FCE_PAGES != sizeof(fce_pages) / sizeof(struct page *));
+	for (fce_page_id = 0; fce_page_id < NR_FCE_PAGES; fce_page_id++) {
+		fce_pages[fce_page_id] = alloc_page(FASTCALL_GPF);
+		if (!fce_pages[fce_page_id]) {
+			pr_warn("fce: can't allocate function page");
+			result = -ENOMEM;
+			goto fail_fce_page_alloc;
+		}
+		fce_addr = kmap(fce_pages[fce_page_id]);
+		fce_count = min(FCE_FUNCTIONS_SIZE - fce_page_id * PAGE_SIZE, PAGE_SIZE);
+		memcpy(fce_addr, fce_region_start, fce_count);
+		kunmap(fce_pages[fce_page_id]);
+	}
+
+
+		// Allocate pages for example function and copy them
+	BUG_ON(NR_SR_PAGES != sizeof(sr_pages) / sizeof(struct page *));
+	for (sr_page_id = 0; sr_page_id < NR_SR_PAGES; sr_page_id++) {
+		sr_pages[sr_page_id] = alloc_page(FASTCALL_GPF);
+		if (!sr_pages[sr_page_id]) {
+			pr_warn("sr: can't allocate function page");
+			result = -ENOMEM;
+			goto fail_sr_page_alloc;
+		}
+		sr_addr = kmap(sr_pages[sr_page_id]);
+		sr_count = min(SR_FUNCTIONS_SIZE - sr_page_id * PAGE_SIZE, PAGE_SIZE);
+		memcpy(sr_addr, secret_region_start, sr_count);
+		kunmap(sr_pages[sr_page_id]);
+	}
 
 	// Allocate one character device number with dynamic major number
 	result = alloc_chrdev_region(&fce_dev, 0, 1, FCE_DEVICE_NAME);
@@ -227,6 +312,17 @@ fail_cdev_add:
 	cdev_del(fce_cdev);
 fail_cdev_alloc:
 	unregister_chrdev_region(fce_dev, 1);
+
+fail_sr_page_alloc:
+	for (sr_page_id--; sr_page_id >= 0; sr_page_id--)
+		__free_page(sr_pages[sr_page_id]);
+
+fail_fce_page_alloc:
+	for (fce_page_id--; fce_page_id >= 0; fce_page_id--)
+		__free_page(fce_pages[fce_page_id]);
+
+
+	return result;
 fail_chrdev:
 	return result;
 }
