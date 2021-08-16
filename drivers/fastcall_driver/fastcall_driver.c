@@ -44,6 +44,7 @@ int fast_call_example(unsigned long __user user_address){
 	unsigned long hidden_addr;
 	unsigned long secret_addr;
 	struct fastcall_entry *entry;
+	int index;
 	struct mesg message;
 	int ret = 0;
 
@@ -84,14 +85,17 @@ int fast_call_example(unsigned long __user user_address){
 		goto fail_creation_hidden_region;
 	}
 
-	entry = &fc_table->entries[fc_table->entries_size];
+	index = fc_table->entries_size -1;
+
+	entry = &fc_table->entries[index];
 	if(!entry){
 		pr_info("fast_call_example: can't get the entry for the system call\n");
 		ret = -EINTR;
 		goto fail_get_entry;
 	}
 
-	pr_info("fast_call_example: regions address of fastcall, fce_region:%lx, secrect_region:%lx, hidden_region:%lx\n", entry->fce_region_addr, entry->exect_region_addr,  entry->hidden_region_addr);
+	pr_info("fast_call_example: regions address of fastcall, fce_region:%lx, secrect_region:%lx, hidden_region:%lx\n", \
+	entry->fce_region_addr, entry->exect_region_addr,  entry->hidden_region_addr);
 
 	if(entry->fce_region_addr != fce_addr){
 		pr_info("fast_call_example: fce_address diffrent ,fce_addr in driver: %lx, fce_addr in table: %lx \n", fce_addr, entry->fce_region_addr);
