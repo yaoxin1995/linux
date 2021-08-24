@@ -17,18 +17,23 @@
 typedef int (*fc_ptr)(void);
 
 struct mesg {
-		unsigned long yellow_address;
-		unsigned long purple_address;
-		unsigned long green_address;
+		unsigned long fce_region_address;
+		unsigned long secret_region;
+		unsigned long hidden_region[10];
 };
 /*
  * Read the first byte of the fastcall table.
  */
 void _read_table(struct mesg *message)
 {
-	printf("First byte of yellow box: 0x%x\n", *(char *)message->yellow_address);
-	printf("First byte of purple box: 0x%x\n", *(char *)message->purple_address);
-	printf("First byte of green: 0x%x\n", *(char *)message->green_address);
+	int i;
+
+	printf("fce address: 0x%lx\n", message->fce_region_address);
+	printf("secret region address: 0x%lx\n", message->secret_region);
+
+	for (i = 0; i < 10; i++)
+		printf("hidden region address: 0x%lx\n", message->hidden_region[i]);
+
 
 }
 
@@ -37,30 +42,30 @@ void _read_table(struct mesg *message)
  * The fastcall table must not be unmapped.
  * munmap should result in an error.
  */
-int main(int argc, char *argv[]) {
-    int fd;
+int main(int argc, char *argv[]) 
+{
+	int fd;
 	int ret, fce_ret;
 	struct mesg *message;
 	fc_ptr fc_noop;
 
-    message = malloc(sizeof(struct mesg));
+	message = malloc(sizeof(struct mesg));
 	printf("enter\n");
 
 
 	fd = open("/dev/fastcall-examples", O_RDONLY);
-	if (fd < 0) {
+	if (fd < 0)
 		printf("Cannot open device file...\n");
-	}
+
 	ret = ioctl(fd, 0, message);
 
-	fc_noop = (fc_ptr)message->yellow_address;
+	fc_noop = (fc_ptr)message->fce_region_address;
 
 	_read_table(message);
 	fce_ret = fc_noop();
 
-	if( fce_ret == 2 ){
+	if (fce_ret != 0)
         printf("test failed");
-    }
 
     return ret;
 }

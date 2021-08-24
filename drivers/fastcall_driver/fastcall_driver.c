@@ -65,9 +65,9 @@ static struct page *sr_pages[1];
 
 
 struct mesg {
-		unsigned long fce_reg_addr;
-		unsigned long secret_reg_addr;
-		unsigned long hidden_reg_addr;
+		unsigned long fce_region_addr;
+		unsigned long secret_region_addr;
+		unsigned long hidden_region_addr[NR_HIDDEN_REGION];
 };
 
 
@@ -81,31 +81,16 @@ int fast_call_example(unsigned long __user user_address){
 	struct page *hidden_pages[1];
 	struct mm_struct *mm = current->mm;
 	unsigned long fce_addr;
-	unsigned long hidden_addr;
-	unsigned long secret_addr;
 	struct fastcall_entry *entry;
-	int index;
 	struct mesg message;
-	int ret = 0;
-	unsigned long test_value = 17132393680896;
-	char *kernel_sr_addr = (char*)kmap(sr_pages[0]);
-	unsigned long *test_pointer;
+	int ret = 0, i;
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
-	test_pointer = (unsigned long *)(kernel_sr_addr+2);
-
-	pr_info("fast_call_example: test_pointer address: %p, kernel_sr_addr: %p\n", (void *) test_pointer, (void *)kernel_sr_addr);
-	*test_pointer = test_value;
-	pr_info("fast_call_example: value of test_pointer : 0x%lx\n", *test_pointer);
-	kunmap(sr_pages[0]);
-
-
 
 	hidden_pages[0] = alloc_pages(FASTCALL_GPF, 0);
 
 	memset(page_address(hidden_pages[0]), 'D', PAGE_SIZE);
-
 
 	pr_info("fast_call_example: fastcall function offset: %lx\n", function_offset(fce_function));
 	fce_addr = fce_regions_creation(fce_pages, 1, sr_pages, 1, function_offset(fce_function));
@@ -115,64 +100,66 @@ int fast_call_example(unsigned long __user user_address){
 		goto fail_fce_creation;
 	}
 
-	hidden_addr = get_randomized_address(PAGE_SIZE);
-	pr_info("fast_call_example: hidden_addr: %lx\n", hidden_addr);
-	if (IS_ERR_VALUE(hidden_addr)) {
-		pr_info("fast_call_example: falied to find a unmapped area for hidden box, fce_addr: %lx, hidden_addr: %lx\n", fce_addr, hidden_addr);
-		ret = -ENOMEM;
-		goto fail_get_free_vma_area;
-	}
 
-
-
-	ret = hidden_region_creatrion(fce_addr, hidden_pages, 1, hidden_addr);
+	ret = hidden_region_creatrion(fce_addr, hidden_pages, 1, sr_pages[0]);
 	if (ret != 0) {
 		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
 
-	index = fc_table->entries_size -1;
+	ret = hidden_region_creatrion(fce_addr, hidden_pages, 1, sr_pages[0]);
+	if (ret != 0) {
+		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
+		ret = -ENOMEM;
+		goto fail_creation_hidden_region;
+	}
 
-	entry = &fc_table->entries[index];
+	ret = hidden_region_creatrion(fce_addr, hidden_pages, 1, sr_pages[0]);
+	if (ret != 0) {
+		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
+		ret = -ENOMEM;
+		goto fail_creation_hidden_region;
+	}
+
+	ret = hidden_region_creatrion(fce_addr, hidden_pages, 1, sr_pages[0]);
+	if (ret != 0) {
+		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
+		ret = -ENOMEM;
+		goto fail_creation_hidden_region;
+	}
+
+	entry = find_entry(fce_addr);
 	if(!entry){
 		pr_info("fast_call_example: can't get the entry for the system call\n");
 		ret = -EINTR;
 		goto fail_get_entry;
 	}
 
-	pr_info("fast_call_example: regions address of fastcall, fce_region:%lx, secrect_region:%lx, hidden_region:%lx\n", \
-	entry->fce_region_addr, entry->exect_region_addr,  entry->hidden_region_addr);
+	pr_info("fast_call_example: amount of fastcall %d\n",fc_table->entries_size);
+	pr_info("fast_call_example: regions address of fastcall, fce_region:%lx, secrect_region:%lx\n", \
+	entry->fce_region_addr, entry->secret_region_addr);
 
-	if(entry->fce_region_addr != fce_addr){
-		pr_info("fast_call_example: fce_address diffrent ,fce_addr in driver: %lx, fce_addr in table: %lx \n", fce_addr, entry->fce_region_addr);
-		ret = -EINTR;
-		goto fail_addr_same;
+	pr_info("fast_call_example: nr_hidden_region_current: %d\n", entry->nr_hidden_region_current);
+
+	for (i = 0;i < NR_HIDDEN_REGION;i++){
+		message.hidden_region_addr[i] = entry->hidden_region_addrs[i];
+		pr_info("fast_call_example: %d hidden region address 0x%lx\n", i, entry->hidden_region_addrs[i]);
 	}
 
-	
+	message.fce_region_addr = entry->fce_region_addr;
+	message.secret_region_addr =entry->secret_region_addr;
 
-	if(entry->hidden_region_addr != hidden_addr){
-		pr_info("fast_call_example: hidden_addr diffrent ,hidden_addr in driver: %lx, hidden_addr in table: %lx \n", hidden_addr, entry->hidden_region_addr);
-		ret = -EINTR;
-		goto fail_addr_same;
-	}
-
-	message.fce_reg_addr = fce_addr;
-	message.hidden_reg_addr = hidden_addr;
-	message.secret_reg_addr = entry->exect_region_addr;
 
 	if (copy_to_user((void *)user_address, &message, sizeof(struct mesg))) {
-		pr_info("fast_call_example: falied to copy message struct to user space,user_addr: %lx, fce_reg_addr: %lx, hidden_reg_addr: %lx, secret_reg_addr: %lx\n", user_address, message.fce_reg_addr, message.hidden_reg_addr, message.secret_reg_addr);
+		pr_info("fast_call_example: falied to copy message struct to user space,user_addr: %lx, fce_reg_addr: %lx, secret_reg_addr: %lx\n", user_address, message.fce_region_addr, message.secret_region_addr);
 		ret = -EFAULT;
 		goto fail_copy_user;
 	}
 
 fail_fce_creation:
-fail_get_free_vma_area:
 fail_creation_hidden_region:
 fail_get_entry:
-fail_addr_same:
 fail_copy_user:
 	mmap_write_unlock(mm);
 	return ret;

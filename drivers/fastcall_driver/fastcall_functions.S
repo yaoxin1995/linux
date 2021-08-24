@@ -54,10 +54,12 @@ SYM_INNER_LABEL(secret_region_start, SYM_L_GLOBAL)
 */  
 SYM_CODE_START(sr_function)
     movq $0x7FFFFFFFFFFF, %rdx
-    movq $0x7ffff7fc6000, %rsi 
-    movq $0x19016BC83000, %rcx
+    movq $0x7FFFFFFFFFFF, %rsi 
+    movq $0x7FFFFFFFFFFF, %rcx
     movq $0x7FFFFFFFFFFF, %rdx
-    movq $0, %rdx
+    movq $0x7FFFFFFFFFFF, %rdx
+    movq $0x7FFFFFFFFFFF, %rdx
+    movq $10, %rdx
     jmp goto_fce_func
 SYM_CODE_END(sr_function)
 

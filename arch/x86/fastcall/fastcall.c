@@ -182,14 +182,13 @@ unsigned long get_randomized_address(unsigned long len)
 
 
 /*
- * is_fce_address_valid: check if the fast call entry address valid
+ * find_entry: check if the fast call entry address valid
  * fce_address: fastcall entry address
  * return struct fastcall_entry*  if fce_address valid ,otherwise return null ptr
- * the other two regions (fce region and executable only region) should be created first
  */
-struct fastcall_entry* is_fce_address_valid(unsigned long fce_address)
+struct fastcall_entry *find_entry(unsigned long fce_address)
 {
-	struct fastcall_entry* ret = NULL;
+	struct fastcall_entry *ret = NULL;
 	size_t i;
 
 	pr_info("is_fce_address_valid: start \n");
@@ -201,32 +200,28 @@ struct fastcall_entry* is_fce_address_valid(unsigned long fce_address)
 
 
 
-	if (mutex_lock_killable(&fc_table->mutex)){
-		pr_info("is_fce_address_valid: lock the table failed \n");
-		goto fail_table_lock;
-	}
+	// if (mutex_lock_killable(&fc_table->mutex)){
+	// 	pr_info("is_fce_address_valid: lock the table failed \n");
+	// 	goto fail_table_lock;
+	// }
 
 
 	for (i = 0; i < NR_ENTRIES; i++) {
 
 		struct fastcall_entry *entry = &fc_table->entries[i];
 
-		if (entry->fce_region_addr == 0) {
-			pr_info("is_fce_address_valid: can't find the corresponding entry in array entries \n");
-			goto fail_find_valid_fce;
-		}
-
 		if (entry->fce_region_addr == fce_address) {
-			pr_info("is_fce_address_valid: the corresponding entry in array entries is found \n");
+			pr_info("is_fce_address_valid: the corresponding entry with fce_address %lx in array entries is found \n", fce_address);
 			ret = entry;
-			break;
+			goto find_fce_address;
 		}
 	}
 
+	pr_info("is_fce_address_valid: can't find the corresponding entry in array entries with fce_address: %lx\n", fce_address);
+
 fail_table_exist:
-fail_table_lock:
-fail_find_valid_fce:
-	mutex_unlock(&fc_table->mutex);
+find_fce_address:
+	//mutex_unlock(&fc_table->mutex);
 	return ret;
 
 }
@@ -241,59 +236,92 @@ fail_find_valid_fce:
  * return 0 if everything all right
  * the other two regions (fce region and executable only region) should be created first
  */
-int hidden_region_creatrion(unsigned long fce_address, struct page **pages, int num, unsigned long start_addr)
+int hidden_region_creatrion(unsigned long fce_address, struct page **hr_pages, int hr_num, struct page *sr_page)
 {
 	unsigned long ret = 0;
-	size_t fce_entries_size = fc_table->entries_size;
+	unsigned long hr_start_address;
 	//struct mm_struct *mm = current->mm;
-	struct fastcall_entry *entry = &fc_table->entries[fce_entries_size];
+	struct fastcall_entry *entry = find_entry(fce_address);
+	char *sr_start_addr;
+	unsigned long *start_overwritten_ptr;
+
+	if (!entry) {
+		pr_info("hidden_region_creatrion: fce_address:0x%lx not valid\n", fce_address);
+		goto invalid_fce_entry;
+	}
 
 	// if (mmap_write_lock_killable(mm))
 	// 	return -EINTR;
 
+	if (entry->nr_hidden_region_current >= NR_HIDDEN_REGION) {
+		pr_info("hidden_region_creatrion: entry with fce_address %lx can't have more hidden region\n", fce_address);
+		goto invalid_fce_entry;
+	}
+
 	pr_info("hidden_region_creatrion: start \n");
-	pr_info("hidden_region_creatrion: fce_address:%lx, page num: %d, start_addr %lx\n", fce_address, num, start_addr);
+	pr_info("hidden_region_creatrion: fce_address:%lx, hidden page number: %d\n", fce_address, hr_num);
+
 	if (!fc_table) {
 		ret = -EINTR;
 		pr_info("hidden_region_creatrion: fc_table not initialized,call fce_regions_creation first \n");
 		goto fail_fac_address_invailid;
 	}
 
-	if(entry->fce_region_addr != fce_address){
-		ret = -EINTR;
-		pr_info("hidden_region_creatrion: fce_address invalid \n");
-		goto fail_fac_address_invailid;
+
+	hr_start_address = get_randomized_address(PAGE_SIZE);
+	pr_info("fast_call_example: hidden_addr: %lx\n", hr_start_address);
+	if (IS_ERR_VALUE(hr_start_address)) {
+		pr_info("hidden_region_creatrion: falied to find a unmapped area for hidden box, fce_addr: %lx, hidden_addr: %lx\n", fce_address, hr_start_address);
+		ret = -ENOMEM;
+		goto fail_get_free_vma_area;
 	}
 
-	ret = region_mapping(pages, num, HIDEN_REGION_FLAG, start_addr);
-	if (ret != start_addr) {
-		pr_info("hidden_region_creatrion: falied to install hidden box,  ret = %lx, start_adr = %lx\n", ret, start_addr);
+
+
+	ret = region_mapping(hr_pages, hr_num, HIDEN_REGION_FLAG, hr_start_address);
+	if (ret != hr_start_address) {
+		pr_info("hidden_region_creatrion: falied to install hidden box,  ret = 0x%lx, start_adr = 0x%lx\n", ret, hr_start_address);
 		ret = -ENOMEM;
 		goto fail_creat_vma;
 	}
 
+	// overwriten dummy nummber on page secret
+	sr_start_addr = (char*) kmap(sr_page);
+
+	sr_start_addr = sr_start_addr + 10 * entry->nr_hidden_region_current + 2;
+
+	start_overwritten_ptr = (unsigned long *) sr_start_addr;
+
+	*start_overwritten_ptr = hr_start_address;
+
+	kunmap(sr_page);
+
+
+	entry->hidden_region_addrs[entry->nr_hidden_region_current] = hr_start_address;
+
+	if (entry->nr_hidden_region_current == 0)
+		fc_table->entries_size++;
+
+	entry->nr_hidden_region_current++;
 
 
 
-
-	if (entry->hidden_region_addr != 0){
-		pr_info("hidden_region_creatrion: hidden region already exist, unmap it!");
-		unmap_region(entry->hidden_region_addr);
-	}
-
-	pr_info("hidden_region_creatrion: the start address of this region ret = %lx, fce_addr: %lx\n", ret, fce_address);
-
-	entry->hidden_region_addr = ret;
-	fc_table->entries_size++;
-	ret = 0;
+	pr_info("hidden_region_creatrion: the start address of this region ret = 0x%lx, fce_addr: 0x%lx\n", ret, fce_address);
 
 
+	pr_info("hidden_region_creatrion:region addresses in fc_table, fc_address:%lx \n", entry->fce_region_addr);
+	pr_info("hidden_region_creatrion:region addresses in fc_table, secret_adr:%lx \n",entry->secret_region_addr);
+	pr_info("hidden_region_creatrion:region addresses in fc_table, hidden_addr: %lx\n", entry->hidden_region_addrs[entry->nr_hidden_region_current-1]);
+	pr_info("hidden_region_creatrion: current number of fastcall in entry: %d\n", entry->nr_hidden_region_current);
 
-	pr_info("hidden_region_creatrion:region addresses in fc_table, fc_address:%lx \n", (fc_table->entries[fce_entries_size]).fce_region_addr);
-	pr_info("hidden_region_creatrion:region addresses in fc_table, secret_adr:%lx \n", (fc_table->entries[fce_entries_size]).exect_region_addr);
-	pr_info("hidden_region_creatrion:region addresses in fc_table, hidden_addr: %lx\n", (fc_table->entries[fce_entries_size]).hidden_region_addr);
+
 	pr_info("hidden_region_creatrion:region addresses in fc_table, registered fastcall: %d\n", fc_table->entries_size);
 	pr_info("hidden_region_creatrion:  function end with no bug\n");
+
+	ret = 0;
+
+fail_get_free_vma_area:
+invalid_fce_entry:
 fail_fac_address_invailid:
 fail_creat_vma:
 	// mmap_write_unlock(mm);
@@ -302,9 +330,10 @@ fail_creat_vma:
 
 
 
+// TO DO: initialize the tabel with VDSO
 int initianlize_table(void)
 {
-	size_t i;
+	size_t i, j;
 
 
 	pr_info("initianlize_table: function starts\n");
@@ -318,8 +347,10 @@ int initianlize_table(void)
 
 	for (i = 0; i < NR_ENTRIES; i++) {
 		fc_table->entries[i].fce_region_addr = 0;
-		fc_table->entries[i].hidden_region_addr = 0;
-		fc_table->entries[i].exect_region_addr = 0;
+		fc_table->entries[i].secret_region_addr = 0;
+
+		for (j = 0; j < NR_HIDDEN_REGION; j++)
+			fc_table->entries[j].hidden_region_addrs[j] = 0;
 	}
 	fc_table->entries_size = 0;
 
@@ -398,14 +429,18 @@ int secret_pages_num, unsigned long offset)
 		goto fail_creat_vma;
 	}
 
-	entry = &fc_table->entries[fc_table->entries_size];
+	entry = find_entry(0);
+	if (!entry) {
+		pr_info("fce_regions_creation: can't creat fastcall entry anymore, there are too many\n");
+		goto failed_find_entry;
+	}
 
 	//fc_table->entries_size++;
 
 	entry->fce_region_addr = fce_start_adr;
-	entry->exect_region_addr = secret_start_adr;
-	pr_info("fce_regions_creation: entry->fce_region_addr: = %lx, entry->exect_region_addr  = %lx\n", \
-	entry->fce_region_addr, entry->exect_region_addr);
+	entry->secret_region_addr = secret_start_adr;
+	pr_info("fce_regions_creation: entry->fce_region_addr: = 0x%lx, entry->exect_region_addr  = 0x%lx\n", \
+	entry->fce_region_addr, entry->secret_region_addr);
 
 
 	pr_info("fce_regions_creation: function end with no bug\n");
@@ -421,6 +456,9 @@ fail_creat_vma:
 
 fail_creat_fce:
 	pr_info("fce_regions_creation: function end with fail_creat_fce, too many entrys \n");
-	return ret;
+failed_find_entry:
+	unmap_region(fce_start_adr);
+	unmap_region(secret_start_adr);
+	return -1;
 
 }
