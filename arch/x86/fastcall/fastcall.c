@@ -226,6 +226,87 @@ find_fce_address:
 
 }
 
+/*
+ * put_address_to_sr:  put hidden region address to secret region
+ * index: index of mov instruction to overwrten
+ * sr_page: secret page that contain mov instruction to be written to
+ * hidden_address: hidden address of hidden region
+ * return 0 if everything all right
+ */
+
+void put_address_to_sr(int index, struct page *sr_page, unsigned long hidden_address)
+{
+
+	char *sr_start_addr;
+	unsigned long *start_overwritten_ptr;
+		// overwriten dummy nummber on page secret
+	sr_start_addr = (char*) kmap(sr_page);
+
+	sr_start_addr = sr_start_addr + MOV_SLOT_SIZE * index + MOV_SLOT_OFFSET;
+
+	start_overwritten_ptr = (unsigned long *) sr_start_addr;
+
+	*start_overwritten_ptr = hidden_address;
+
+	kunmap(sr_page);
+
+}
+
+
+/*
+ * find_fastcall_vma - find the vma containing the fastcall pages
+ */
+static struct vm_area_struct *find_fastcall_vma(unsigned long address)
+{
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma;
+	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		if (!vma_is_special_mapping(vma, &fastcall_pages_mapping))
+			continue;
+		if (address >= vma->vm_start && address <= vma->vm_end)
+			return vma;
+	}
+	// No fastcall mapping was found in the process.
+	BUG();
+}
+
+
+
+int delete_hidden_region(unsigned long fce_address, unsigned long hr_address, struct page *sr_page)
+{
+	struct vm_area_struct * hr_vma;
+	int i, index;
+	struct fastcall_entry *entry;
+
+	entry = find_entry(fce_address);
+	if(!entry)
+		return -1;
+
+	for (i = 0; i < NR_HIDDEN_REGION; i++) {
+		if (entry->hidden_region_addrs[i]) {
+			index = i;
+			goto find_entry;
+		}
+	}
+	return -1;
+find_entry:
+
+	if (sr_page != NULL)
+		put_address_to_sr(index, sr_page, 0x7FFFFFFFFFFF);
+
+	entry->hidden_region_addrs[i] = 0;
+	entry->nr_hidden_region_current--;
+
+	// delete the hidden region
+	hr_vma = find_fastcall_vma(hr_address);
+	zap_page_range(hr_vma, hr_address, (hr_vma->vm_end - hr_vma->vm_start) * PAGE_SIZE);
+	unmap_region(hr_address);
+	return 0;
+
+}
+
+
+
 
 
 /*
@@ -233,17 +314,17 @@ find_fce_address:
  * fce_address: fastcall entry address
  * pages: array of page needed in this region
  * num: amount of entry in array pages
- * return 0 if everything all right
+ * return hidden region address if everything all right
  * the other two regions (fce region and executable only region) should be created first
  */
-int hidden_region_creatrion(unsigned long fce_address, struct page **hr_pages, int hr_num, struct page *sr_page)
+unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr_pages, int hr_num, struct page *sr_page)
 {
-	unsigned long ret = 0;
+	unsigned long ret = -1;
 	unsigned long hr_start_address;
 	//struct mm_struct *mm = current->mm;
 	struct fastcall_entry *entry = find_entry(fce_address);
-	char *sr_start_addr;
-	unsigned long *start_overwritten_ptr;
+	int index, i;
+
 
 	if (!entry) {
 		pr_info("hidden_region_creatrion: fce_address:0x%lx not valid\n", fce_address);
@@ -253,10 +334,11 @@ int hidden_region_creatrion(unsigned long fce_address, struct page **hr_pages, i
 	// if (mmap_write_lock_killable(mm))
 	// 	return -EINTR;
 
-	if (entry->nr_hidden_region_current >= NR_HIDDEN_REGION) {
+	if (entry->nr_hidden_region_current >= NR_HIDDEN_REGION || entry->nr_hidden_region_current >=  entry->max_hidden_region) {
 		pr_info("hidden_region_creatrion: entry with fce_address %lx can't have more hidden region\n", fce_address);
 		goto invalid_fce_entry;
 	}
+
 
 	pr_info("hidden_region_creatrion: start \n");
 	pr_info("hidden_region_creatrion: fce_address:%lx, hidden page number: %d\n", fce_address, hr_num);
@@ -285,19 +367,17 @@ int hidden_region_creatrion(unsigned long fce_address, struct page **hr_pages, i
 		goto fail_creat_vma;
 	}
 
-	// overwriten dummy nummber on page secret
-	sr_start_addr = (char*) kmap(sr_page);
+	for (i = 0; i < NR_HIDDEN_REGION; i++) {
+		if (entry->hidden_region_addrs[i] == 0) {
+			index = i;
+			break;
+		}
+	}
 
-	sr_start_addr = sr_start_addr + 10 * entry->nr_hidden_region_current + 2;
-
-	start_overwritten_ptr = (unsigned long *) sr_start_addr;
-
-	*start_overwritten_ptr = hr_start_address;
-
-	kunmap(sr_page);
+	put_address_to_sr(index, sr_page, hr_start_address);
 
 
-	entry->hidden_region_addrs[entry->nr_hidden_region_current] = hr_start_address;
+	entry->hidden_region_addrs[index] = hr_start_address;
 
 	if (entry->nr_hidden_region_current == 0)
 		fc_table->entries_size++;
@@ -318,7 +398,7 @@ int hidden_region_creatrion(unsigned long fce_address, struct page **hr_pages, i
 	pr_info("hidden_region_creatrion:region addresses in fc_table, registered fastcall: %d\n", fc_table->entries_size);
 	pr_info("hidden_region_creatrion:  function end with no bug\n");
 
-	ret = 0;
+	ret = hr_start_address;
 
 fail_get_free_vma_area:
 invalid_fce_entry:
@@ -348,7 +428,7 @@ int initianlize_table(void)
 	for (i = 0; i < NR_ENTRIES; i++) {
 		fc_table->entries[i].fce_region_addr = 0;
 		fc_table->entries[i].secret_region_addr = 0;
-
+		fc_table->entries[i].max_hidden_region = 0;
 		for (j = 0; j < NR_HIDDEN_REGION; j++)
 			fc_table->entries[j].hidden_region_addrs[j] = 0;
 	}
@@ -377,8 +457,8 @@ int initianlize_table(void)
  * - return the fastcall entry address if succeed
  * - TODO: puple page should be only excutable
  */
-unsigned long fce_regions_creation( struct page **fce_pages, int fce_pages_num, struct page **secret_pages, \
-int secret_pages_num, unsigned long offset)
+unsigned long fce_regions_creation(struct page **fce_pages, int fce_pages_num, struct page **secret_pages,
+int secret_pages_num, unsigned long offset, int max_hidden_region)
 {
 	unsigned long ret;
 	unsigned long fce_start_adr;
@@ -439,6 +519,7 @@ int secret_pages_num, unsigned long offset)
 
 	entry->fce_region_addr = fce_start_adr;
 	entry->secret_region_addr = secret_start_adr;
+	entry->max_hidden_region = max_hidden_region;
 	pr_info("fce_regions_creation: entry->fce_region_addr: = 0x%lx, entry->exect_region_addr  = 0x%lx\n", \
 	entry->fce_region_addr, entry->secret_region_addr);
 

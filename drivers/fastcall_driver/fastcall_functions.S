@@ -29,7 +29,13 @@ SYM_FUNC_START(fce_function)
     # we can't use absolute address hier, since the absolute address is caculated at compile time--> we need relative jump just like jump in dynamic lib
     # lea sr_function(%rip), %rdi # get absolut address of secret_region_function
     jmp sr_function
-SYM_INNER_LABEL(goto_fce_func, SYM_L_GLOBAL)
+SYM_INNER_LABEL(goto_fce_func_1, SYM_L_GLOBAL)
+    jmp goto_second_mov
+SYM_INNER_LABEL(goto_fce_func_2, SYM_L_GLOBAL)
+    jmp goto_third_mov
+SYM_INNER_LABEL(goto_fce_func_3, SYM_L_GLOBAL)
+    jmp goto_fourth_mov
+SYM_INNER_LABEL(goto_fce_func_4, SYM_L_GLOBAL)
     cmpq  $10, %rdx
     je corret_result    # IF correctly jump back from sr_function return 1, otherwise return 2
     movq $2, %rax
@@ -54,13 +60,16 @@ SYM_INNER_LABEL(secret_region_start, SYM_L_GLOBAL)
 */  
 SYM_CODE_START(sr_function)
     movq $0x7FFFFFFFFFFF, %rdx
-    movq $0x7FFFFFFFFFFF, %rsi 
+    jmp goto_fce_func_1
+SYM_INNER_LABEL(goto_second_mov, SYM_L_GLOBAL)
+    movq $0x7FFFFFFFFFFF, %rsi
+    jmp goto_fce_func_2
+SYM_INNER_LABEL(goto_third_mov, SYM_L_GLOBAL)
     movq $0x7FFFFFFFFFFF, %rcx
+    jmp goto_fce_func_3
+SYM_INNER_LABEL(goto_fourth_mov, SYM_L_GLOBAL)
     movq $0x7FFFFFFFFFFF, %rdx
-    movq $0x7FFFFFFFFFFF, %rdx
-    movq $0x7FFFFFFFFFFF, %rdx
-    movq $10, %rdx
-    jmp goto_fce_func
+    jmp goto_fce_func_4
 SYM_CODE_END(sr_function)
 
 
