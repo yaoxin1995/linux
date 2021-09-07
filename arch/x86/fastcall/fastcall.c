@@ -57,10 +57,21 @@ static vm_fault_t fastcall_fault(const struct vm_special_mapping *sm,
 }
 
 /*
- * special mapping struct for yellow page
+ * special mapping struct for fce and secret page
  */
 static const struct vm_special_mapping fastcall_pages_mapping = {
 	.name = "[fastcall_pages]",
+	.mremap = fastcall_mremap,
+	.may_unmap = fastcall_may_unmap,
+	.fault = fastcall_fault,
+};
+
+
+/*
+ * special mapping struct for hidden page
+ */
+const struct vm_special_mapping fastcall_hidden_pages_mapping = {
+	.name = "[fastcall_hidden_pages]",
 	.mremap = fastcall_mremap,
 	.may_unmap = fastcall_may_unmap,
 	.fault = fastcall_fault,
@@ -124,7 +135,7 @@ static void unmap_region(unsigned long vma_addr)
  *		- start_address: start address of this vma
  *	- Return the pointer to the first address of the area.
  */
-static unsigned long region_mapping(struct page **pages, unsigned long num, unsigned long flags, unsigned long start_address)
+static unsigned long region_mapping(struct page **pages, unsigned long num, unsigned long flags, unsigned long start_address, bool is_hidden_region)
 {
 	int err;
 	struct mm_struct *mm = current->mm;
@@ -134,8 +145,10 @@ static unsigned long region_mapping(struct page **pages, unsigned long num, unsi
 	pr_info("install_box_mapping: function starts");
     pr_info("install_box_mapping: function argument , start address: %lx num of pages: %lu\n", start_address, num);
 
-
-	vma = _install_special_mapping(mm, start_address, len, flags, &fastcall_pages_mapping);
+	if (is_hidden_region)	
+		vma = _install_special_mapping(mm, start_address, len, flags, &fastcall_hidden_pages_mapping);
+	else
+		vma = _install_special_mapping(mm, start_address, len, flags, &fastcall_pages_mapping);
 	if (IS_ERR(vma)) {
 		pr_info("install_box_mapping: falied to allocat a vma for box, error code: %ld, flags: %lu, start address: %lx\n", PTR_ERR(vma), flags, start_address);
 		goto fail_insert_vma;
@@ -256,12 +269,12 @@ void put_address_to_sr(int index, struct page *sr_page, unsigned long hidden_add
 /*
  * find_fastcall_vma - find the vma containing the fastcall pages
  */
-static struct vm_area_struct *find_fastcall_vma(unsigned long address)
+static struct vm_area_struct *find_fc_hidden_vma(unsigned long address)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (!vma_is_special_mapping(vma, &fastcall_pages_mapping))
+		if (!vma_is_special_mapping(vma, &fastcall_hidden_pages_mapping))
 			continue;
 		if (address >= vma->vm_start && address <= vma->vm_end)
 			return vma;
@@ -298,7 +311,7 @@ find_entry:
 	entry->nr_hidden_region_current--;
 
 	// delete the hidden region
-	hr_vma = find_fastcall_vma(hr_address);
+	hr_vma = find_fc_hidden_vma(hr_address);
 	zap_page_range(hr_vma, hr_address, (hr_vma->vm_end - hr_vma->vm_start) * PAGE_SIZE);
 	unmap_region(hr_address);
 	return 0;
@@ -360,7 +373,7 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 
 
 
-	ret = region_mapping(hr_pages, hr_num, HIDEN_REGION_FLAG, hr_start_address);
+	ret = region_mapping(hr_pages, hr_num, HIDEN_REGION_FLAG, hr_start_address, true);
 	if (ret != hr_start_address) {
 		pr_info("hidden_region_creatrion: falied to install hidden box,  ret = 0x%lx, start_adr = 0x%lx\n", ret, hr_start_address);
 		ret = -ENOMEM;
@@ -491,7 +504,7 @@ int secret_pages_num, unsigned long offset, int max_hidden_region)
 	pr_info("fce_regions_creation: fce_start_adr: %lx, secret_start_adr: %lx fce_function_offset:%lx \n",\
 	 fce_start_adr, secret_start_adr, offset);
 
-	ret = region_mapping(fce_pages, fce_pages_num, FCE_REGION_FLAG, fce_start_adr);
+	ret = region_mapping(fce_pages, fce_pages_num, FCE_REGION_FLAG, fce_start_adr, false);
 	if (ret != fce_start_adr) {
 		pr_info("fastcall_register: falied to install fce mapping, ret = %lx, fce_start_adr = %lx\n", ret, fce_start_adr);
 		goto fail_creat_vma;
@@ -503,7 +516,7 @@ int secret_pages_num, unsigned long offset, int max_hidden_region)
 
 
 	//TODO: change it to VM_EXEC | VM_MAYEXEC
-	ret = region_mapping(secret_pages, secret_pages_num, FCE_REGION_FLAG, secret_start_adr);
+	ret = region_mapping(secret_pages, secret_pages_num, FCE_REGION_FLAG, secret_start_adr, false);
 	if (ret != secret_start_adr) {
 		pr_info("fce_regions_creation: falied to install exec_only_pages mapping, ret = %lx, secret_start_adr = %lx\n", ret, secret_start_adr);
 		goto fail_creat_vma;

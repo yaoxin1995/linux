@@ -228,7 +228,7 @@ static vm_fault_t vvar_fault(const struct vm_special_mapping *sm,
 	return VM_FAULT_SIGBUS;
 }
 
-static const struct vm_special_mapping vdso_mapping = {
+const struct vm_special_mapping vdso_mapping = {
 	.name = "[vdso]",
 	.fault = vdso_fault,
 	.mremap = vdso_mremap,
