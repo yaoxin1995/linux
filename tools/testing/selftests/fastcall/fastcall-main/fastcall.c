@@ -14,6 +14,7 @@
 //#include "../kselftest_harness.h"
 
 #define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
+#define TEST ((char *)0x7ffffffe0000)
 typedef int (*fc_ptr)(void);
 
 struct mesg {
@@ -68,7 +69,7 @@ int main(int argc, char *argv[])
 	if (fce_ret != 0)
         printf("test failed, return value %d\n",fce_ret);
 
-	fc_noop = (fc_ptr)(0x7fffffff0000);
+	printf("First byte of the fastcall table: 0x%x\n", *TEST);
 
     return ret;
 }

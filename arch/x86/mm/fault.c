@@ -1353,7 +1353,7 @@ retry:
 		might_sleep();
 	}
 
-	if (address > DEFAULT_MAP_WINDOW && address < TASK_SIZE_MAX) {
+	if (address > DEFAULT_MAP_WINDOW && address < HIDDEN_REGION_MAX) {
 		bad_area(regs, error_code, address);
 		return;
 	}

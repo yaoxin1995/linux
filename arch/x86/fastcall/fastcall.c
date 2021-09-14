@@ -182,7 +182,7 @@ unsigned long get_randomized_address(unsigned long len, bool hidden_region)
 
 	info.flags = 0;
 	info.length = len;
-	info.high_limit = TASK_SIZE_MAX;
+	info.high_limit = HIDDEN_REGION_MAX;
 	info.low_limit = DEFAULT_MAP_WINDOW;
 	info.align_mask = 0;
 	info.align_offset = 0;
@@ -191,10 +191,13 @@ unsigned long get_randomized_address(unsigned long len, bool hidden_region)
 		info.low_limit +=
 			PAGE_ALIGN((get_random_long() &
 				    ((1UL << (__VIRTUAL_MASK_SHIFT - 2)) - 1)));
-	else
+	else{
+		info.high_limit = DEFAULT_MAP_WINDOW;
 		info.low_limit =
-					PAGE_ALIGN((get_random_long() &
-				    	((1UL << (__VIRTUAL_MASK_SHIFT - 20)) - 1)));
+			PAGE_ALIGN((get_random_long() &
+		    	((1UL << (__VIRTUAL_MASK_SHIFT - 20)) - 1)));
+	}
+
 
 	return vm_unmapped_area(&info);
 
