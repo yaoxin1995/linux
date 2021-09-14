@@ -176,17 +176,25 @@ fail_insert_page:
  *	- len: the size of the vma
  */
 
-unsigned long get_randomized_address(unsigned long len)
+unsigned long get_randomized_address(unsigned long len, bool hidden_region)
 {
 	struct vm_unmapped_area_info info;
 
 	info.flags = 0;
 	info.length = len;
-	info.high_limit = DEFAULT_MAP_WINDOW;
+	info.high_limit = TASK_SIZE_MAX;
+	info.low_limit = DEFAULT_MAP_WINDOW;
 	info.align_mask = 0;
 	info.align_offset = 0;
 
-	info.low_limit = PAGE_ALIGN((get_random_long() & ((1UL << (__VIRTUAL_MASK_SHIFT - 2)) - 1)));
+	if (hidden_region)
+		info.low_limit +=
+			PAGE_ALIGN((get_random_long() &
+				    ((1UL << (__VIRTUAL_MASK_SHIFT - 2)) - 1)));
+	else
+		info.low_limit =
+					PAGE_ALIGN((get_random_long() &
+				    	((1UL << (__VIRTUAL_MASK_SHIFT - 20)) - 1)));
 
 	return vm_unmapped_area(&info);
 
@@ -284,7 +292,9 @@ static struct vm_area_struct *find_fc_hidden_vma(unsigned long address)
 }
 
 
-
+/*
+ * delete_hidden_region - delete a hidden region in fast call entry
+ */
 int delete_hidden_region(unsigned long fce_address, unsigned long hr_address, struct page *sr_page)
 {
 	struct vm_area_struct * hr_vma;
@@ -296,7 +306,7 @@ int delete_hidden_region(unsigned long fce_address, unsigned long hr_address, st
 		return -1;
 
 	for (i = 0; i < NR_HIDDEN_REGION; i++) {
-		if (entry->hidden_region_addrs[i]) {
+		if (entry->hidden_region_addrs[i] == hr_address) {
 			index = i;
 			goto find_entry;
 		}
@@ -336,7 +346,7 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 	unsigned long hr_start_address;
 	//struct mm_struct *mm = current->mm;
 	struct fastcall_entry *entry = find_entry(fce_address);
-	int index, i;
+	int index, i, j;
 
 
 	if (!entry) {
@@ -363,7 +373,7 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 	}
 
 
-	hr_start_address = get_randomized_address(PAGE_SIZE);
+	hr_start_address = get_randomized_address(PAGE_SIZE, true);
 	pr_info("fast_call_example: hidden_addr: %lx\n", hr_start_address);
 	if (IS_ERR_VALUE(hr_start_address)) {
 		pr_info("hidden_region_creatrion: falied to find a unmapped area for hidden box, fce_addr: %lx, hidden_addr: %lx\n", fce_address, hr_start_address);
@@ -405,7 +415,7 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 	pr_info("hidden_region_creatrion:region addresses in fc_table, fc_address:%lx \n", entry->fce_region_addr);
 	pr_info("hidden_region_creatrion:region addresses in fc_table, secret_adr:%lx \n",entry->secret_region_addr);
 	pr_info("hidden_region_creatrion:region addresses in fc_table, hidden_addr: %lx\n", entry->hidden_region_addrs[entry->nr_hidden_region_current-1]);
-	pr_info("hidden_region_creatrion: current number of fastcall in entry: %d\n", entry->nr_hidden_region_current);
+	pr_info("hidden_region_creatrion: current number of hidden region in entry: %d\n", entry->nr_hidden_region_current);
 
 
 	pr_info("hidden_region_creatrion:region addresses in fc_table, registered fastcall: %d\n", fc_table->entries_size);
@@ -413,10 +423,17 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 
 	ret = hr_start_address;
 
-fail_get_free_vma_area:
-invalid_fce_entry:
-fail_fac_address_invailid:
+	return ret;
+
+
 fail_creat_vma:
+fail_get_free_vma_area:
+fail_fac_address_invailid:
+	unmap_region(entry->fce_region_addr);
+	unmap_region(entry->secret_region_addr);
+	entry->fce_region_addr = 0;
+	entry->secret_region_addr = 0;
+invalid_fce_entry:
 	// mmap_write_unlock(mm);
 	return ret;
 }

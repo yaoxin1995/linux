@@ -64,8 +64,11 @@ int main(int argc, char *argv[])
 	_read_table(message);
 	fce_ret = fc_noop();
 
+
 	if (fce_ret != 0)
-        printf("test failed");
+        printf("test failed, return value %d\n",fce_ret);
+
+	fc_noop = (fc_ptr)(0x7fffffff0000);
 
     return ret;
 }

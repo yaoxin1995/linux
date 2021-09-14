@@ -35,6 +35,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <asm/trace/exceptions.h>
+#include <asm/page_64_types.h>
 
 /*
  * Returns 0 if mmiotrace is disabled, or if the fault is not
@@ -818,6 +819,7 @@ __bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_code,
 	 * Valid to do another page fault here because this one came
 	 * from user space:
 	 */
+	
 	if (is_prefetch(regs, error_code, address))
 		return;
 
@@ -836,8 +838,11 @@ __bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_code,
 
 	if (si_code == SEGV_PKUERR)
 		force_sig_pkuerr((void __user *)address, pkey);
-
-	force_sig_fault(SIGSEGV, si_code, (void __user *)address);
+	
+	if(address > DEFAULT_MAP_WINDOW)
+		force_sig_fault(SIGKILL, si_code, (void __user *)address);
+	else
+		force_sig_fault(SIGSEGV, si_code, (void __user *)address);
 
 	local_irq_disable();
 }
@@ -1346,6 +1351,11 @@ retry:
 		 * down_read():
 		 */
 		might_sleep();
+	}
+
+	if (address > DEFAULT_MAP_WINDOW && address < TASK_SIZE_MAX) {
+		bad_area(regs, error_code, address);
+		return;
 	}
 
 	vma = find_vma(mm, address);

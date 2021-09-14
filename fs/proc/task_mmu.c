@@ -338,20 +338,14 @@ static int show_map(struct seq_file *m, void *v)
 {
 	struct vm_area_struct *vma = (struct vm_area_struct *)v;
 
-	pr_info("show_map: enter function\n");
 
 	if (vma_is_special_mapping(vma, &vdso_mapping)) {
-		pr_info("show_map: vma is vDSO mapping, skip the iteration\n");
 		return 1;
 	}
 
 	if (vma_is_special_mapping(vma, &fastcall_hidden_pages_mapping)) {
-		pr_info("show_map: vma is fast call hidden page mapping, skip the iteration\n");
 		return 1;
 	}
-
-
-	pr_info("show_map: vma is not vDSO\n");
 	show_map_vma(m, v);
 
 	return 0;

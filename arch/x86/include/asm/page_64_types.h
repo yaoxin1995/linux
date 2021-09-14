@@ -79,7 +79,12 @@
  */
 #define TASK_SIZE_MAX	((_AC(1,UL) << __VIRTUAL_MASK_SHIFT) - PAGE_SIZE)
 
-#define DEFAULT_MAP_WINDOW	((1UL << 47) - PAGE_SIZE)
+
+/*
+ * 	Make room for hidden region above normal mapping
+ */
+
+#define DEFAULT_MAP_WINDOW	(1UL <<  (__VIRTUAL_MASK_SHIFT - 1))
 
 /* This decides where the kernel will search for a free chunk of vm
  * space during mmap's.
