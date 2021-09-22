@@ -53,6 +53,8 @@
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 
+#include <asm/fastcall.h>
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/mmap.h>
 
@@ -3189,6 +3191,8 @@ void exit_mmap(struct mm_struct *mm)
 	struct mmu_gather tlb;
 	struct vm_area_struct *vma;
 	unsigned long nr_accounted = 0;
+	struct fastcall_entry *fc_entry;
+	int i;
 
 	/* mm's last user has gone, and its about to be pulled down */
 	mmu_notifier_release(mm);
@@ -3216,6 +3220,31 @@ void exit_mmap(struct mm_struct *mm)
 		mmap_write_lock(mm);
 		mmap_write_unlock(mm);
 	}
+
+	/*clean fast call table entry if mm deleted*/
+	vma = mm->mmap;
+	while (vma) {
+		if (!vma_is_special_mapping(vma, &fastcall_pages_mapping)) {
+			vma = vma->vm_next;
+			continue;
+		}
+
+		fc_entry = find_entry(vma->vm_start);
+		if (fc_entry) {
+			mutex_lock(&fc_table->mutex);
+			fc_entry->fce_region_addr = 0;
+			fc_entry->nr_hidden_region_current = 0;
+			fc_entry->max_hidden_region = 0;
+			for (i = 0; i < NR_HIDDEN_REGION; i++) {
+				if (fc_entry->hidden_region_addrs[i] != 0)
+					fc_entry->hidden_region_addrs[i] = 0;
+			}
+			fc_table->entries_size--;
+			mutex_unlock(&fc_table->mutex);
+		}
+		vma = vma->vm_next;
+	}
+
 
 	if (mm->locked_vm) {
 		vma = mm->mmap;

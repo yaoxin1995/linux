@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 	_read_table(message);
 	fce_ret = fc_noop();
 
-	ret = ioctl(fd, 1, message);
+	//ret = ioctl(fd, 1, message);
 
 	if (fce_ret != 0)
         printf("test failed, return value %d\n",fce_ret);

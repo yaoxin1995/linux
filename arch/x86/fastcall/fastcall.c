@@ -59,7 +59,7 @@ static vm_fault_t fastcall_fault(const struct vm_special_mapping *sm,
 /*
  * special mapping struct for fce and secret page
  */
-static const struct vm_special_mapping fastcall_pages_mapping = {
+const struct vm_special_mapping fastcall_pages_mapping = {
 	.name = "[fastcall_pages]",
 	.mremap = fastcall_mremap,
 	.may_unmap = fastcall_may_unmap,
@@ -233,6 +233,7 @@ struct fastcall_entry *find_entry(unsigned long fce_address)
 
 
 	for (i = 0; i < NR_ENTRIES; i++) {
+
 
 		struct fastcall_entry *entry = &fc_table->entries[i];
 

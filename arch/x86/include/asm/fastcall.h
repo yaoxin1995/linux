@@ -39,6 +39,8 @@ extern struct fastcall_table *fc_table;
 
 extern const struct vm_special_mapping fastcall_hidden_pages_mapping;
 
+extern const struct vm_special_mapping fastcall_pages_mapping;
+
 extern unsigned long fce_regions_creation( struct page **, int , struct page **, int, unsigned long, int);
 extern unsigned long hidden_region_creation(unsigned long, struct page **, int, struct page *);
 extern struct fastcall_entry *find_entry(unsigned long);
