@@ -59,6 +59,7 @@
 #define __VIRTUAL_MASK_SHIFT	47
 #endif
 
+#ifdef CONFIG_FASTCALL
 
 #define HIDDEN_REGION_MAX	((_AC(1,UL) << __VIRTUAL_MASK_SHIFT) - PAGE_SIZE)
 /*
@@ -80,14 +81,19 @@
  * With page table isolation enabled, we map the LDT in ... [stay tuned]
  */
 
-
 /*
  * 	Make room for hidden region above normal mapping
  */
 #define TASK_SIZE_MAX	(_AC(1,UL) << (__VIRTUAL_MASK_SHIFT - 1))
 
 #define DEFAULT_MAP_WINDOW	(1UL <<  (__VIRTUAL_MASK_SHIFT - 1))
+#else
 
+
+#define TASK_SIZE_MAX	((_AC(1,UL) << __VIRTUAL_MASK_SHIFT) - PAGE_SIZE)
+#define DEFAULT_MAP_WINDOW	((1UL << 47) - PAGE_SIZE)
+
+#endif /* FASTCALL */
 /* This decides where the kernel will search for a free chunk of vm
  * space during mmap's.
  */

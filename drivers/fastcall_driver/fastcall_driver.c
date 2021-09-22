@@ -23,6 +23,7 @@ MODULE_DESCRIPTION("An example device driver which adds some fastcalls for testi
 
 #define FCE_DEVICE_NAME "fastcall-examples"
 #define FCE_COMMAND_FASTCALL_REGISTRATION 0
+#define FCE_COMMAND_FASTCALL_UNREGISTRATION 1
 
 
 /*
@@ -76,6 +77,30 @@ static unsigned long function_offset(const void (*fn)(void))
 	return (fn - fce_region_start);
 }
 
+int fast_call_unregistration(unsigned long __user user_address)
+{
+	unsigned long fce_addr;
+	struct mesg message;
+	unsigned long ret = 0;
+
+	if (copy_from_user(&message, (void *)user_address, sizeof(struct mesg))) {
+		pr_info("fast_call_unregistration: falied to copy message struct to kernel space from user_addr: %lx\n", user_address);
+		ret = -EFAULT;
+		goto fail_copy_from_user;
+	}
+
+	ret = fsc_unregistration(message.fce_region_addr);
+	if (ret < 0) {
+		pr_info("fast_call_unregistration: falied to unregister the fast call function with address: %lx\n", user_address);
+		ret = -EFAULT;
+		goto fail_unregister_fsc;
+	}
+
+fail_copy_from_user:
+fail_unregister_fsc:
+
+return ret;
+}
 
 int fast_call_example(unsigned long __user user_address){
 	struct page *hidden_pages[1];
@@ -87,6 +112,7 @@ int fast_call_example(unsigned long __user user_address){
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
+
 
 	hidden_pages[0] = alloc_pages(FASTCALL_GPF, 0);
 
@@ -152,7 +178,8 @@ int fast_call_example(unsigned long __user user_address){
 
 
 	if (copy_to_user((void *)user_address, &message, sizeof(struct mesg))) {
-		pr_info("fast_call_example: falied to copy message struct to user space,user_addr: %lx, fce_reg_addr: %lx, secret_reg_addr: %lx\n", user_address, message.fce_region_addr, message.secret_region_addr);
+		pr_info("fast_call_example: falied to copy message struct to user space,user_addr: %lx, fce_reg_addr: %lx, \
+		secret_reg_addr: %lx\n", user_address, message.fce_region_addr, message.secret_region_addr);
 		ret = -EFAULT;
 		goto fail_copy_user;
 	}
@@ -191,6 +218,13 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		pr_info("fce_ioctl: user address: %lu\n", args);
 
 		ret = fast_call_example(args);
+		pr_info("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
+		break;
+	case FCE_COMMAND_FASTCALL_UNREGISTRATION:
+		pr_info("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_UNREGISTRATION\n");
+		pr_info("fce_ioctl: user address: %lu\n", args);
+
+		ret = fast_call_unregistration(args);
 		pr_info("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
 		break;
 	default:

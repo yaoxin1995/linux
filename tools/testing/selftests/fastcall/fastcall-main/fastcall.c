@@ -53,8 +53,10 @@ int main(int argc, char *argv[])
 	message = malloc(sizeof(struct mesg));
 	printf("enter\n");
 
+	//message->fce_region_address = 0x3fa2804a4000;
 
-	fd = open("/dev/fastcall-examples", O_RDONLY);
+
+	fd = open("/dev/fastcall-examples", O_RDWR);
 	if (fd < 0)
 		printf("Cannot open device file...\n");
 
@@ -65,11 +67,12 @@ int main(int argc, char *argv[])
 	_read_table(message);
 	fce_ret = fc_noop();
 
+	ret = ioctl(fd, 1, message);
 
 	if (fce_ret != 0)
         printf("test failed, return value %d\n",fce_ret);
 
-	printf("First byte of the fastcall table: 0x%x\n", *TEST);
+	//printf("First byte of the fastcall table: 0x%x\n", *TEST);
 
     return ret;
 }
