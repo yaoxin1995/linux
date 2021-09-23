@@ -1034,6 +1034,12 @@ static inline int is_mergeable_vma(struct vm_area_struct *vma,
 				struct file *file, unsigned long vm_flags,
 				struct vm_userfaultfd_ctx vm_userfaultfd_ctx)
 {
+
+	/*
+	 * Fast call vma is not mergable
+	 */
+	if (vma_is_special_mapping(vma, &fastcall_pages_mapping))
+		return 0;
 	/*
 	 * VM_SOFTDIRTY should not prevent from VMA merging, if we
 	 * match the flags but dirty bit -- the caller should mark

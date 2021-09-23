@@ -33,6 +33,9 @@
 #include <asm/mmu_context.h>
 #include <asm/tlbflush.h>
 
+#include <linux/mm.h>
+#include <asm/fastcall.h>
+
 #include "internal.h"
 
 static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
@@ -533,6 +536,9 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	end = start + len;
 	if (end <= start)
 		return -ENOMEM;
+	/*
+	 * Nothing can be changed in userspace for hidden region
+	 */
 	if (end >= TASK_SIZE_MAX)
 		return -EINVAL;
 	if (!arch_validate_prot(prot, start))
@@ -581,11 +587,20 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 		unsigned long newflags;
 		int new_vma_pkey;
 
+		/* Here we check that whether vma is belonged to fast call vma
+		 * You are not allowed to change vma belonged to fast call
+		 */
+
+		if (vma_is_special_mapping(vma, &fastcall_pages_mapping))
+			goto out;
+
+
 		/* Here we know that vma->vm_start <= nstart < vma->vm_end. */
 
 		/* Does the application expect PROT_READ to imply PROT_EXEC */
 		if (rier && (vma->vm_flags & VM_MAYEXEC))
 			prot |= PROT_EXEC;
+
 
 		/*
 		 * Each mprotect() call explicitly passes r/w/x permissions.
