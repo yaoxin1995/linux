@@ -562,13 +562,21 @@ struct mm_struct {
 #ifdef CONFIG_IOMMU_SUPPORT
 		u32 pasid;
 #endif
+
+#ifdef CONFIG_FASTCALL
+	bool fastcall_registered;
+#endif
 	} __randomize_layout;
+
+
 
 	/*
 	 * The mm_cpumask needs to be at the end of mm_struct, because it
 	 * is dynamically sized based on nr_cpu_ids.
 	 */
 	unsigned long cpu_bitmap[];
+
+
 };
 
 extern struct mm_struct init_mm;

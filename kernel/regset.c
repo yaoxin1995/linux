@@ -3,6 +3,7 @@
 #include <linux/slab.h>
 #include <linux/regset.h>
 
+
 static int __regset_get(struct task_struct *target,
 			const struct user_regset *regset,
 			unsigned int size,
@@ -67,7 +68,14 @@ int copy_regset_to_user(struct task_struct *target,
 	const struct user_regset *regset = &view->regsets[setno];
 	void *buf;
 	int ret;
+	struct mm_struct *mm = current->mm;
 
+#ifdef CONFIG_FASTCALL
+	mmap_read_lock(mm);
+	if (mm->fastcall_registered)
+		return -EPERM;
+	mmap_read_unlock(mm);
+#endif
 	ret = regset_get_alloc(target, regset, size, &buf);
 	if (ret > 0)
 		ret = copy_to_user(data, buf, ret) ? -EFAULT : 0;

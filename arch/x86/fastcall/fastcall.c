@@ -365,15 +365,17 @@ fail_lock:
  * num: amount of entry in array pages
  * return hidden region address if everything all right
  * the other two regions (fce region and executable only region) should be created first
+ * caller must hold lock for mm
  */
 unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr_pages, int hr_num, struct page *sr_page)
 {
 	unsigned long ret = -1;
+	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *fce_vma, *sr_vma, *hr_vma;
 	unsigned long hr_start_address;
 	//struct mm_struct *mm = current->mm;
 	struct fastcall_entry *entry = find_entry(fce_address);
-	int index, i, j;
+	int index, i;
 
 	if (!mutex_trylock(&fc_table->mutex)) {
 		pr_info("fce_regions_creation: fail_lock\n");
@@ -439,6 +441,9 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 
 	entry->nr_hidden_region_current++;
 
+	if (!mm->fastcall_registered)
+		mm->fastcall_registered = true;
+
 
 
 	pr_info("hidden_region_creatrion: the start address of this region ret = 0x%lx, fce_addr: 0x%lx\n", ret, fce_address);
@@ -497,7 +502,7 @@ fail_lock:
 int fsc_unregistration(unsigned long fce_address)
 {
 	unsigned long ret = 0;
-	struct vm_area_struct *fce_vma, *sr_vma, *hr_vma;
+	struct vm_area_struct *fce_vma, *sr_vma, *hr_vma, *vma;
 	struct mm_struct *mm = current->mm;
 	struct fastcall_entry *entry = find_entry(fce_address);
 	int i;
@@ -546,6 +551,13 @@ int fsc_unregistration(unsigned long fce_address)
 	entry->nr_hidden_region_current = 0;
 	entry->max_hidden_region = 0;
 
+	for (vma = mm->mmap; vma; vma = vma->vm_next)
+		if (vma_is_special_mapping(vma, &fastcall_pages_mapping))
+			goto find_fc_vam;
+	mm->fastcall_registered = false;
+
+
+find_fc_vam:
 	pr_info("fsc_unregistration: end with no bug\n");
 
 
