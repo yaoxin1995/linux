@@ -1054,9 +1054,9 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	if (init_new_context(p, mm))
 		goto fail_nocontext;
 // fastcall_registered: default mm dosen't have vma belonged to fast call
-#ifdef CONFIG_FASTCALL
+
 	mm->fastcall_registered = false;
-#endif
+
 
 	mm->user_ns = get_user_ns(user_ns);
 	return mm;

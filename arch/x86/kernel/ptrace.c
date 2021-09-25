@@ -26,6 +26,7 @@
 #include <linux/export.h>
 #include <linux/context_tracking.h>
 #include <linux/nospec.h>
+#include <linux/mmap_lock.h>
 
 #include <linux/uaccess.h>
 #include <asm/processor.h>
@@ -42,6 +43,7 @@
 #include <asm/syscall.h>
 #include <asm/fsgsbase.h>
 #include <asm/io_bitmap.h>
+
 
 #include "tls.h"
 
@@ -713,6 +715,7 @@ long arch_ptrace(struct task_struct *child, long request,
 {
 	int ret;
 	unsigned long __user *datap = (unsigned long __user *)data;
+	struct mm_struct *mm = child->mm;
 
 #ifdef CONFIG_X86_64
 	/* This is native 64-bit ptrace() */
