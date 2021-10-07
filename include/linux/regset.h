@@ -328,15 +328,6 @@ static inline int copy_regset_from_user(struct task_struct *target,
 					const void __user *data)
 {
 	const struct user_regset *regset = &view->regsets[setno];
-	struct mm_struct *mm = target->mm;
-
-
-	mmap_read_lock(mm);	
-	if (mm->fastcall_registered) {
-		mmap_read_unlock(mm);
-		return -EPERM;
-	}
-	mmap_read_unlock(mm);
 	
 
 	if (!regset->set)
