@@ -3247,10 +3247,16 @@ void exit_mmap(struct mm_struct *mm)
 			}
 			fc_table->entries_size--;
 			mutex_unlock(&fc_table->mutex);
+
 		}
 		vma = vma->vm_next;
 	}
-
+	
+	if (fc_table && !fc_table->entries_size) {
+		mutex_destroy(&fc_table->mutex);
+		kfree(fc_table);
+		fc_table = NULL;
+	}
 
 	if (mm->locked_vm) {
 		vma = mm->mmap;

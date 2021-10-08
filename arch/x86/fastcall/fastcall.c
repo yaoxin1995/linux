@@ -551,6 +551,7 @@ int fsc_unregistration(unsigned long fce_address)
 	entry->nr_hidden_region_current = 0;
 	entry->max_hidden_region = 0;
 
+
 	for (vma = mm->mmap; vma; vma = vma->vm_next)
 		if (vma_is_special_mapping(vma, &fastcall_pages_mapping))
 			goto find_fc_vam;
@@ -563,8 +564,16 @@ find_fc_vam:
 
 invalid_fce_entry:
 	mutex_unlock(&fc_table->mutex);
+
+	if (fc_table && !fc_table->entries_size) {
+		mutex_destroy(&fc_table->mutex);
+		kfree(fc_table);
+		fc_table = NULL;
+	}
+
 	mmap_write_unlock(mm);
 fail_lock:
+
 	return ret;
 }
 
