@@ -36,11 +36,11 @@ SYM_INNER_LABEL(goto_fce_func_2, SYM_L_GLOBAL)
 SYM_INNER_LABEL(goto_fce_func_3, SYM_L_GLOBAL)
     jmp goto_fourth_mov
 SYM_INNER_LABEL(goto_fce_func_4, SYM_L_GLOBAL)
-    cmpq  $10, %rdx
-    je corret_result    # IF correctly jump back from sr_function return 1, otherwise return 2
+    cmpq  $1, %rax
+    je wrong_result    
     movq $2, %rax
     ret
-corret_result:
+wrong_result:
     ret
 SYM_FUNC_END(fce_function)
 
@@ -59,7 +59,7 @@ SYM_INNER_LABEL(secret_region_start, SYM_L_GLOBAL)
 * SYM_CODE_START is not normal c like function -> don't obey the c calling convention
 */  
 SYM_CODE_START(sr_function)
-    movq $0x7FFFFFFFFFFF, %rdx
+    movq $0x7FFFFFFFFFFF, %rax
     jmp goto_fce_func_1
 SYM_INNER_LABEL(goto_second_mov, SYM_L_GLOBAL)
     movq $0x7FFFFFFFFFFF, %rsi

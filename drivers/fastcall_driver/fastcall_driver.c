@@ -24,7 +24,7 @@ MODULE_DESCRIPTION("An example device driver which adds some fastcalls for testi
 #define FCE_DEVICE_NAME "fastcall-examples"
 #define FCE_COMMAND_FASTCALL_REGISTRATION 0
 #define FCE_COMMAND_FASTCALL_UNREGISTRATION 1
-
+#define FCE_COMMAND_NOOP 2
 
 /*
  * Function labels from fastcall_functions.S.
@@ -226,6 +226,10 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 
 		ret = fast_call_unregistration(args);
 		pr_info("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
+		break;
+	case FCE_COMMAND_NOOP:
+		ret = 0;
+		pr_info("fce_ioctl: fce_ioctl noop ended with ret: %lu\n", ret);
 		break;
 	default:
 		pr_info("fce_ioctl: the input cmd didn't get any match\n");
