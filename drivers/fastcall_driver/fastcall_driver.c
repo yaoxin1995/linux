@@ -110,8 +110,7 @@ int fast_call_example(unsigned long __user user_address){
 	struct mesg message;
 	unsigned long ret = 0, i;
 
-	if (mmap_write_lock_killable(mm))
-		return -EINTR;
+
 
 
 	hidden_pages[0] = alloc_pages(FASTCALL_GPF, 0);
@@ -119,6 +118,8 @@ int fast_call_example(unsigned long __user user_address){
 	memset(page_address(hidden_pages[0]), 'D', PAGE_SIZE);
 
 	pr_info("fast_call_example: fastcall function offset: %lx\n", function_offset(fce_function));
+
+
 	fce_addr = fce_regions_creation(fce_pages, 1, sr_pages, 1, function_offset(fce_function), 9);
 	if (IS_ERR((int)fce_addr) || fce_addr < 0 || IS_ERR_VALUE(fce_addr)) {
 		pr_info("fast_call_example: falied to call fce_regions_creation, fce_addr = %lx\n", fce_addr);
@@ -188,7 +189,6 @@ fail_fce_creation:
 fail_creation_hidden_region:
 fail_get_entry:
 fail_copy_user:
-	mmap_write_unlock(mm);
 	return ret;
 
 }
